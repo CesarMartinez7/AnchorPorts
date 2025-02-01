@@ -46,7 +46,7 @@ def get_ip() -> str:
 
 ## Flujo normal del codigo
 def main (machine):
-    print("1. Escaner todo la red actual : \n2. Escanear una red con un puerto especifico \n3. Escanear una red total \n4. Escaneo personalizado [command-line] \n5. Ver la cantidad de dispositivos en mi red")
+    print("1. Escaner todo la red actual : \n2. Escanear una red con un puerto especifico \n3. Escanear una red total \n4. Escaneo personalizado [command-line] \n5. Ver la cantidad de dispositivos en mi redd")
     opciones = int(input(f"[${machine}] :: "))
     try:
         if(opciones == 1):
