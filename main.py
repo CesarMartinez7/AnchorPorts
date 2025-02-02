@@ -30,7 +30,7 @@ def main (machine):
             scaneo = scan.scan(hosts=f"{ip}/24", arguments="-O ",sudo=True)
             formatter(escaneo=scaneo)
         elif(opciones == 2):
-            print("Escaneando la red con un puerto en especifico")
+            print("Escaneando la red con un puerto en especifico.")
         elif (opciones == 3):
             ip = get_addr_localhost()
             nm = nmap.PortScanner()
