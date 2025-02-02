@@ -29,6 +29,7 @@ _ip_default : str = str(get_ip_for_machine().get("output", "output"))
 
 
 # Se pone gateway por ahora para saber que es la local.
+
 def get_addr_gateway() -> str:
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.connect(("8.8.8.8", 80))
