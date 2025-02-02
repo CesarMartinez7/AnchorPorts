@@ -18,13 +18,16 @@ def opcion_1(ip : str ) -> None:
     print(Fore.GREEN + f"=========== Escaneando [{ip}] =============")
     scan = nmap.PortScanner()
     scaneo = scan.scan(hosts=f"{ip}/24", arguments="-O ", sudo=True)
-    scan.command_line()
+    informacion_adicional = scan.scaninfo()
+    print(f"Informacion extra {informacion_adicional} ")
     array = scaneo.get("scan")
+    formatter(escaneo=array)
     dispositivos_actuales: int = len(scaneo.get("scan").keys())
     print(f"Dispositivos Conectados a la red : [{dispositivos_actuales}]")
 
     for item in array.items():
-        print("==========================================")
+        print("\n ==========================================")
+        print(f"Nmap Version: {scan.nmap_version()}")
         print(f"Direccion IP: {item[0]}")
         print(
             f"Nombre {item[1]['hostnames'][0]['name']} Type {item[1]['hostnames'][0]['type']}"
@@ -32,11 +35,12 @@ def opcion_1(ip : str ) -> None:
         print(f"ipv4: {item[1]['addresses']['ipv4']}")
         print(f"Status : {item[1]['status']['state']}")
         
+        print(item[1]["osmatch"][0]["name"] if len(item[1]["osmatch"]) > 0 else "No se encontro el sistema")
         print(item[1]["portused"] if len(item[1]["portused"]) > 0 else "No hay puertos abiertos o en uso")
         
 
     
-
+## nmap -p- -O -sV <ip>
 
 def opcion_2():
     pass
