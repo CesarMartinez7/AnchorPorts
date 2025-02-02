@@ -18,6 +18,7 @@ def opcion_1(ip : str ) -> None:
     print(Fore.GREEN + f"=========== Escaneando [{ip}] =============")
     scan = nmap.PortScanner()
     scaneo = scan.scan(hosts=f"{ip}/24", arguments="-O ", sudo=True)
+    scan.command_line()
     array = scaneo.get("scan")
     dispositivos_actuales: int = len(scaneo.get("scan").keys())
     print(f"Dispositivos Conectados a la red : [{dispositivos_actuales}]")
@@ -32,6 +33,7 @@ def opcion_1(ip : str ) -> None:
         print(f"Status : {item[1]['status']['state']}")
         
         print(item[1]["portused"] if len(item[1]["portused"]) > 0 else "No hay puertos abiertos o en uso")
+        
 
     
 
