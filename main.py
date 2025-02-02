@@ -1,7 +1,6 @@
 import subprocess
 import nmap
 from colorama import Fore
-
 from printt import formatter
 import sys
 from fonts import f
@@ -15,8 +14,8 @@ print(Fore.BLUE + f"Sistema operativo ${machine}")
 print(f"Ip local ${_ip_default}")
 
 
-def opcion_1(ip) -> None:
-    print(Fore.GREEN + f"=========== Scaneo [{ip}] =============")
+def opcion_1(ip : str ) -> None:
+    print(Fore.GREEN + f"=========== Escaneando [{ip}] =============")
     scan = nmap.PortScanner()
     scaneo = scan.scan(hosts=f"{ip}/24", arguments="-O ", sudo=True)
     array = scaneo.get("scan")
@@ -27,13 +26,14 @@ def opcion_1(ip) -> None:
         print("==========================================")
         print(f"Direccion IP: {item[0]}")
         print(
-            f"Detalles {item[1]['hostnames'][0]['name']} Type {item[1]['hostnames'][0]['type']}"
+            f"Nombre {item[1]['hostnames'][0]['name']} Type {item[1]['hostnames'][0]['type']}"
         )
         print(f"ipv4: {item[1]['addresses']['ipv4']}")
         print(f"Status : {item[1]['status']['state']}")
         
         print(item[1]["portused"] if len(item[1]["portused"]) > 0 else "No hay puertos abiertos o en uso")
-        
+
+    
 
 
 def opcion_2():
@@ -44,7 +44,7 @@ def opcion_2():
 def main(machine: str) -> None:
     print(
         Fore.GREEN
-        + f"1. Escaneo masivo de la red [route] : \n2. Escanear una red con un puerto especifico \n3. Escanear todos los  puertos [localhost ${machine} ]  \n4. Escaneo personalizado  \n5. Ver la cantidad de dispositivos en mi red"
+        + f"1. Escaneo masivo de la red [route] : \n2. Escanear una red con un puerto especifico \n3. Escanear todos los  puertos [localhost ${machine} ]  \n4. Escaneo personalizado  \n5. Ver la cantidad de dispositivos en mi red \n5. Ver sistemas operativos de la red"
     )
     opciones = int(input(f" [${machine}] :: "))
     try:
@@ -66,13 +66,15 @@ def main(machine: str) -> None:
                 stdout=True,
                 check=True,
             )
+        elif opciones == 5:
+            pass
     except KeyboardInterrupt:
         response = input("Estas seguro que deseas salir  \n [] :: ")
         match response:
             case "y":
                 sys.exit()
     else:
-        print("Escaneo completado con exito ☕ ")
+        print("Escaneo ejecutado con exito  ☕ ")
 
 
 if __name__ == "__main__":
