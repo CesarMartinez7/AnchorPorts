@@ -34,10 +34,14 @@ def opcion_1(ip : str ) -> None:
         print(f"ipv4: {item[1]['addresses']['ipv4']}")
         print(f"Status : {item[1]['status']['state']}")
         
-        print(item[1]["osmatch"][0]["name"] if len(item[1]["osmatch"]) > 0 else "No se encontro el sistema")
+        print(item[1]["osmatch"][0]["name"] if len(item[1]["osmatch"]) > 0 else "No se encontro el sistema") 
         print(item[1]["portused"] if len(item[1]["portused"]) > 0 else "No hay puertos abiertos o en uso")
         
-
+        if len(item[1]["tcp"] ) > 0:
+            for port in item[1].all_tcp():
+                print(f"Port --> {port} open")
+        else:
+            print("No hay puertos abiertos")
     
 ## nmap -p- -O -sV <ip>
 
