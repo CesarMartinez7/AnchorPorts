@@ -1,5 +1,7 @@
 Package     Version
 ----------- -------
+colorama    0.4.6
+numpy       2.2.2
 pip         25.0
 pyfiglet    1.0.2
 python-nmap 0.7.1
