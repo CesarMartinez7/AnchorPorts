@@ -52,7 +52,7 @@ def opcion_3 () -> None:
     formatter(ports[0])
 
 
-def opcion_4 (machine : str) -> None:
+def opcion_4 (machine:str) -> None:
     nm = nmap.PortScanner()
     input_comand = str(input(f"-> $[{machine}] :: "))
     array_input_comand = np.array(input_comand.split(" "))
@@ -61,24 +61,36 @@ def opcion_4 (machine : str) -> None:
 
 
 ## Flujo normal del codigo
-def main(machine: str) -> None:
+def main(machine:str) -> None:
     print(
         Fore.GREEN
         + f"1. Escaneo masivo de la red [route] : \n2. Escanear una red con un puerto especifico \n3. Escanear todos los  puertos [localhost ${machine} ]  \n4. Escaneo personalizado  \n5. Ver la cantidad de dispositivos en mi red \n6. Ver sistemas operativos de la red"
     )
     opciones = int(input(f" [${machine}] :: "))
     try:
-        if opciones == 1:
-            ip = get_addr_gateway()
-            opcion_1(ip=ip)
-        elif opciones == 2:
-            print("Escaneando la red con un puerto en especifico.")
-        elif opciones == 3:
-            opcion_3()
-        elif opciones == 4:
-           opcion_4(machine=machine)
-        elif opciones == 5:
-            pass
+        match opciones:
+            case 1:
+                ip = get_addr_gateway()
+                opcion_1(ip=ip)
+            case 2:
+                print("Escaneando la red con un puerto en especifico.")
+            case 3:
+                opcion_3()
+            case 4:
+                opcion_4(machine=machine)
+            case 5:
+                nm = nmap.PortScanner()
+                ip : str =f"{get_addr_gateway()}/24"
+                nm.scan(hosts=ip)
+                dispositivos : int= len(nm.all_hosts())
+                cont: int = 0
+                print(f"Dispositivo totales --> {dispositivos}")
+                for host in nm.all_hosts():
+                    cont = cont + 1
+                    print(f"{ host} Dispositivo  --> {cont}")
+            case 6:
+                pass
+                
     except KeyboardInterrupt:
         response = input("Estas seguro que deseas salir  \n [] :: ")
         match response:
