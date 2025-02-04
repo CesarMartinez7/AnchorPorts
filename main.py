@@ -10,7 +10,7 @@ from get_host import _ip_default, get_addr_localhost, get_addr_gateway
 machine: str = sys.platform.title()
 
 
-print(f.renderText("Scanner Ports"))
+print(f.renderText("Anchor Port"),end="\n")
 print(Fore.BLUE + f"Sistema operativo ${machine}")
 print(f"Ip local ${_ip_default}")
 
