@@ -89,3 +89,5 @@ def bloquear_trafico(mac_victima):
             time.sleep(1)
     except KeyboardInterrupt:
         handler_senal(None, None)
+        
+

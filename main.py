@@ -10,9 +10,7 @@ from script import (bloquear_trafico)
 machine: str = sys.platform.title()
 
 
-print(f.renderText("Anchor Port"),end="\n")
-print(Fore.BLUE + f"Sistema operativo ${machine}")
-print(f"Ip local ${_ip_default}")
+
 
 
 def opcion_1(ip : str ) -> None:
@@ -109,6 +107,9 @@ def main(machine:str) -> None:
 if __name__ == "__main__":
     while True:
         try:
+            print(f.renderText("Anchor Port"),end="\n")
+            print(Fore.BLUE + f"Sistema operativo ${machine}")
+            print(f"Ip local ${_ip_default}")
             main(machine=machine)
         except KeyboardInterrupt:
             sys.exit()

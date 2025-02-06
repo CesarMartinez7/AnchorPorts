@@ -16,18 +16,9 @@ Para instalar y configurar Anchor Port, es recomendable utilizar el script como 
    Si intentas ejecutar el script directamente, es probable que te muestre errores de módulos faltantes. Para evitar esto, crea un entorno virtual:
 
    ```bash
-   python3 -m venv <nombre_de_tu_entorno>
+   python3 -m venv <nombre_de_tu_entorno> 
 
 
-1. **Activar el entorno virtual**  
-   Una vez creado el entorno, necesitas activarlo.
-
-   Desde tu editor de código, presiona Ctrl + Shift + P y selecciona el intérprete de Python correspondiente al nombre de tu entorno.
-
-    Desde la terminal, ejecuta el siguiente comando:
-
-   ```bash
-   source <nombre_de_tu_entorno>/bin/activate
 
 3. **Instalar las dependencias**
 
@@ -35,8 +26,9 @@ Para instalar y configurar Anchor Port, es recomendable utilizar el script como 
       ```bash
             pip install -r requerimentos.txt
 
+
 4. **Ejecutar el script**
 
     Para ejecutar el script, solo tienes que correr el siguiente comando:
     ```bash
-            python3 main.py
+            sudo su && source <nombre_de_tu_entorno>/bin/activate &&  python3 main.py
