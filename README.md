@@ -4,13 +4,13 @@ Anchor Port es un escáner de puertos que utiliza la biblioteca `nmap-python` pa
 
 ## Características
 
-- Escaneo de puertos utilizando `nmap-python`
+- Escaneo de puertos utilizando `nmap-python y scapy`
 - Comandos sencillos para escanear puertos
 - Visualización de puertos abiertos en una máquina objetivo
 
 ## Instalación
 
-Para instalar y configurar Anchor Port, sigue los siguientes pasos:
+Para instalar y configurar Anchor Port, es recomendable utilizar el script como __root__ sigue los siguientes pasos:
 
 1. **Crear un entorno virtual**  
    Si intentas ejecutar el script directamente, es probable que te muestre errores de módulos faltantes. Para evitar esto, crea un entorno virtual:

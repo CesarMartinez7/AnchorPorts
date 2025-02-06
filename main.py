@@ -6,7 +6,7 @@ import sys
 import numpy as np
 from fonts import f
 from get_host import _ip_default, get_addr_localhost, get_addr_gateway
-
+from script import (bloquear_trafico)
 machine: str = sys.platform.title()
 
 
@@ -37,11 +37,11 @@ def opcion_1(ip : str ) -> None:
         print(item[1]["osmatch"][0]["name"] if len(item[1]["osmatch"]) > 0 else "No se encontro el sistema") 
         print(item[1]["portused"] if len(item[1]["portused"]) > 0 else "No hay puertos abiertos o en uso")
         
-        if len(item[1]["tcp"] ) > 0:
-            for port in item[1].all_tcp():
-                print(f"Port --> {port} open")
-        else:
-            print("No hay puertos abiertos")
+        # if item[1]["tcp"] or len(item[1]["tcp"]) > 0:
+        #     for port in item[1].all_tcp():
+        #         print(f"Port --> {port} open")
+        # else:
+        #     print("No hay puertos abiertos")
     
 ## nmap -p- -O -sV <ip>
 
@@ -68,7 +68,7 @@ def opcion_4 (machine:str) -> None:
 def main(machine:str) -> None:
     print(
         Fore.GREEN
-        + f"1. Escaneo masivo de la red [route] : \n2. Escanear una red con un puerto especifico \n3. Escanear todos los  puertos [localhost ${machine} ]  \n4. Escaneo personalizado  \n5. Ver la cantidad de dispositivos en mi red \n6. Ver sistemas operativos de la red"
+        + f"1. Escaneo masivo de la red [route] : \n2. Escanear una red con un puerto especifico \n3. Escanear todos los  puertos [localhost ${machine} ]  \n4. Escaneo personalizado  \n5. Ver la cantidad de dispositivos en mi red \n6. Ver sistemas operativos de la red 09\n7. Terminar el trafico en un host local"
     )
     opciones = int(input(f" [${machine}] :: "))
     try:
@@ -94,7 +94,9 @@ def main(machine:str) -> None:
                     print(f"{ host} Dispositivo  --> {cont}")
             case 6:
                 pass
-                
+            case 7:
+                target : str = str(input("Ip o Host : "))
+                bloquear_trafico(mac_victima=target)
     except KeyboardInterrupt:
         response = input("Estas seguro que deseas salir  \n [] :: ")
         match response:
@@ -105,7 +107,8 @@ def main(machine:str) -> None:
 
 
 if __name__ == "__main__":
-    try:
-        main(machine=machine)
-    except KeyboardInterrupt:
-        sys.exit()
+    while True:
+        try:
+            main(machine=machine)
+        except KeyboardInterrupt:
+            sys.exit()
