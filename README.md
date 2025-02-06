@@ -1,6 +1,6 @@
 # Anchor Port
 
-Anchor Port es un escáner de puertos que utiliza la biblioteca `nmap-python` para ofrecer una herramienta sencilla y eficiente para escanear y visualizar puertos abiertos en una máquina.
+Anchor Port es un escáner de puertos que utiliza la biblioteca `nmap-python` para ofrecer una herramienta sencilla y eficiente para escanear, no solo es para escaner tambien sirve para mandar direcciones mac falsas para cortar el trafico de un host y visualizar puertos abiertos en una máquina.
 
 ## Características
 
