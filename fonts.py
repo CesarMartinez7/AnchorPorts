@@ -1,4 +1,4 @@
 from pyfiglet import Figlet
 
 
-f = Figlet(font="standard")
+f = Figlet(font="speed")
