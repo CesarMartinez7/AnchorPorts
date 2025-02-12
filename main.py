@@ -3,43 +3,47 @@ import nmap
 from colorama import Fore
 from printt import formatter
 import sys
+from rich.panel import Panel
 import numpy as np
 from fonts import f
+from rich.console import Console
+from rich.markdown import Markdown
+from rich.table import Table
+from rich.progress import Progress
 from get_host import _ip_default, get_addr_localhost, get_addr_gateway
 from script import (bloquear_trafico)
 machine: str = sys.platform.title()
 
 
-
-
-
-def opcion_1(ip : str ) -> None:
+def opcion_1(ip: str) -> None:
+    console = Console()
     print(Fore.GREEN + f"=========== Escaneando [{ip}] =============")
     scan = nmap.PortScanner()
+    
     scaneo = scan.scan(hosts=f"{ip}/24", arguments="-O ", sudo=True)
     array = scaneo.get("scan")
-    formatter(escaneo=array)
-    dispositivos_actuales: int = len(scaneo.get("scan").keys())
+    dispositivos_actuales: int = len(array.keys())
+    
     print(f"Dispositivos Conectados a la red : [{dispositivos_actuales}]")
-
+    
     for item in array.items():
-        print("\n ==========================================")
-        print(f"Nmap Version: {scan.nmap_version()}")
-        print(f"Direccion IP: {item[0]}")
-        print(
-            f"Nombre {item[1]['hostnames'][0]['name']} Type {item[1]['hostnames'][0]['type']}"
-        )
-        print(f"ipv4: {item[1]['addresses']['ipv4']}")
-        print(f"Status : {item[1]['status']['state']}")
+        table = Table(title=f"Información del dispositivo {item[0]}")
+        table.add_column("Atributo", style="cyan", justify="left")
+        table.add_column("Valor", style="magenta", justify="left")
         
-        print(item[1]["osmatch"][0]["name"] if len(item[1]["osmatch"]) > 0 else "No se encontro el sistema") 
-        print(item[1]["portused"] if len(item[1]["portused"]) > 0 else "No hay puertos abiertos o en uso")
+        table.add_row("Nmap Version", str(scan.nmap_version()))
+        table.add_row("Direccion IP", item[0])
+        table.add_row("Nombre", item[1]['hostnames'][0]['name'])
+        table.add_row("Tipo", item[1]['hostnames'][0]['type'])
+        table.add_row("IPv4", item[1]['addresses']['ipv4'])
+        table.add_row("Status", item[1]['status']['state'])
+        table.add_row("Sistema", item[1]["osmatch"][0]["name"] if len(item[1]["osmatch"]) > 0 else "No se encontro el sistema")
+        table.add_row("Puertos", str(item[1]["portused"]) if len(item[1]["portused"]) > 0 else "No hay puertos abiertos o en uso")
         
-        # if item[1]["tcp"] or len(item[1]["tcp"]) > 0:
-        #     for port in item[1].all_tcp():
-        #         print(f"Port --> {port} open")
-        # else:
-        #     print("No hay puertos abiertos")
+        console.print(table)
+
+
+
     
 ## nmap -p- -O -sV <ip>
 
@@ -63,11 +67,18 @@ def opcion_4 (machine:str) -> None:
 
 
 ## Flujo normal del codigo
-def main(machine:str) -> None:
-    print(
-        Fore.GREEN
-        + f"1. Escaneo masivo de la red [route] : \n2. Escanear una red con un puerto especifico \n3. Escanear todos los  puertos [localhost ${machine} ]  \n4. Escaneo personalizado  \n5. Ver la cantidad de dispositivos en mi red \n6. Ver sistemas operativos de la red 09\n7. Terminar el trafico en un host local"
-    )
+def main(machine:str,console) -> None:
+    menu = Panel("""
+        [bold green]1.[/] Escaneo masivo de la red [route]
+        [bold green]2.[/] Escanear una red con un puerto especifico
+        [bold green]3.[/] Escanear todos los puertos [localhost ${machine}]
+        [bold green]4.[/] Escaneo personalizado
+        [bold green]5.[/] Ver la cantidad de dispositivos en mi red
+        [bold green]6.[/] Ver sistemas operativos de la red
+        [bold green]7.[/] Terminar el trafico en un host local
+        """, title="Opciones de Escaneo", expand=False)
+
+    console.print(menu)
     opciones = int(input(f" [${machine}] :: "))
     try:
         match opciones:
@@ -94,7 +105,7 @@ def main(machine:str) -> None:
                 pass
             case 7:
                 target : str = str(input("Ip o Host : "))
-                bloquear_trafico(mac_victima=target)
+                bloquear_trafico(ip_victima=target)
     except KeyboardInterrupt:
         response = input("Estas seguro que deseas salir  \n [] :: ")
         match response:
@@ -107,9 +118,10 @@ def main(machine:str) -> None:
 if __name__ == "__main__":
     while True:
         try:
+            console = Console()
             print(f.renderText("Anchor Port"),end="\n")
             print(Fore.BLUE + f"Sistema operativo ${machine}")
             print(f"Ip local ${_ip_default}")
-            main(machine=machine)
+            main(machine=machine,console=console)
         except KeyboardInterrupt:
             sys.exit()
