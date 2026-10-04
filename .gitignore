@@ -1,5 +1,8 @@
 __pycache__
 *.db
+build/
+dist/
+*.manifest
 env
 .env
 .entorno

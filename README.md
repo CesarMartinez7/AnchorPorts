@@ -41,3 +41,24 @@ sudo python3 main.py
 # Windows (terminal como Administrador)
 python main.py
 ```
+
+## Compilar a un ejecutable (.exe)
+
+Para usarlo en otra máquina sin instalar Python:
+
+```bash
+pip install pyinstaller
+pyinstaller AnchorPort.spec
+```
+
+Queda en `dist/AnchorPort.exe` (Windows) o `dist/AnchorPort` (Linux). Se ejecuta
+como **Administrador/root**.
+
+**Importante — dependencias externas que NO van dentro del ejecutable:**
+
+- **Npcap** (Windows) o permisos **root** (Linux): obligatorio para enviar/recibir
+  ARP y capturar DNS. El `.exe` lo necesita instalado en la máquina destino.
+- **nmap**: solo para el "Escaneo detallado" (opción 3) y los puertos/SO del
+  detalle. Si no está instalado, el resto funciona igual.
+- **IP forwarding real** (root/Linux) para capturar DNS de otros equipos sin
+  cortarles la red.
