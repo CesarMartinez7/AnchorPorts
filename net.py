@@ -18,7 +18,15 @@ logging.getLogger("scapy").setLevel(logging.CRITICAL)
 logging.getLogger("scapy.runtime").setLevel(logging.CRITICAL)
 warnings.filterwarnings("ignore")
 
-from scapy.all import ARP, Ether, conf, get_if_hwaddr, srp
+from scapy.all import (
+    ARP,
+    ICMPv6EchoRequest,
+    IPv6,
+    Ether,
+    conf,
+    get_if_hwaddr,
+    srp,
+)
 
 conf.verb = 0  # nada de salida por defecto al enviar/recibir
 
@@ -130,6 +138,40 @@ def set_ip_forwarding(enable: bool) -> bool:
     except Exception:
         return False
     return False
+
+
+def get_ipv6_gateway() -> str | None:
+    """IPv6 (link-local) del router por defecto, o None si no hay IPv6."""
+    try:
+        _iface, _src, nh = conf.route6.route("2001:4860:4860::8888")
+        if nh and nh not in ("::", ""):
+            return nh
+    except Exception:
+        pass
+    return None
+
+
+def discover_ipv6(mac: str, timeout: float = 3.0) -> str | None:
+    """Descubre la IPv6 link-local de un dispositivo por su MAC.
+
+    Hace ping ICMPv6 al multicast de todos los nodos (ff02::1) y empareja la
+    respuesta cuya MAC de origen coincide con la del dispositivo.
+    """
+    if not mac:
+        return None
+    try:
+        ans, _ = srp(
+            Ether(dst="33:33:00:00:00:01")
+            / IPv6(dst="ff02::1")
+            / ICMPv6EchoRequest(),
+            timeout=timeout, verbose=0,
+        )
+        for _sent, rcv in ans:
+            if rcv[Ether].src.lower() == mac.lower():
+                return rcv[IPv6].src
+    except Exception:
+        pass
+    return None
 
 
 def ip_forwarding_enabled() -> bool | None:
