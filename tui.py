@@ -431,6 +431,7 @@ class AnchorTUI(App):
         ).start()
 
     def _worker_block(self, ip: str, duration: float | None) -> None:
+        ya_activo = self.manager.is_active(ip)
         ok = self.manager.block(ip, duration=duration)
 
         def done() -> None:
@@ -439,8 +440,15 @@ class AnchorTUI(App):
                 self._set_status(ip, "blocked")
                 extra = f" por {_dur(duration)}" if duration else ""
                 self.notify(f"Bloqueado {ip}{extra}", severity="warning")
+            elif ya_activo:
+                self.notify(f"{ip} ya estaba bloqueado o en monitoreo.",
+                            severity="warning")
             else:
-                self.notify(f"No se pudo bloquear {ip}", severity="error")
+                self.notify(
+                    f"No se pudo bloquear {ip}: no respondió al ARP "
+                    "(desconectado, dormido, o el router aísla clientes).",
+                    severity="error",
+                )
             self._refresh_table()
 
         self.call_from_thread(done)
