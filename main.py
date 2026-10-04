@@ -74,7 +74,7 @@ def escaneo_detallado() -> None:
 def main(console) -> None:
     menu = Panel(
         """
-        [bold green]1.[/] Panel de control en vivo  (ver · bloquear · expulsar)
+        [bold green]1.[/] Panel interactivo (teclado: j/k mover · espacio bloquear · t temporizado)
         [bold green]2.[/] Monitorear dominios de la red (DNS)
         [bold green]3.[/] Escaneo detallado (puertos y sistema operativo)
         [bold green]0.[/] Salir
@@ -90,15 +90,31 @@ def main(console) -> None:
 
     match opcion:
         case 1:
-            from dashboard import Dashboard
-            Dashboard().run()
+            from tui import AnchorTUI
+            AnchorTUI().run()
         case 2:
-            from dns_monitor import DNSMonitor
-            DNSMonitor().run()
+            try:
+                from dns_monitor import DNSMonitor
+                DNSMonitor().run()
+            except RuntimeError as e:
+                _aviso_arp(console, e)
         case 3:
             escaneo_detallado()
         case 0:
             sys.exit()
+
+
+def _aviso_arp(console, error) -> None:
+    """Mensaje claro cuando scapy no puede usar ARP (típico: falta Npcap)."""
+    console.print(f"\n[red]No se pudo iniciar el control de red:[/] {error}\n")
+    console.print(
+        "[bold yellow]Causa más probable en Windows:[/] falta [bold]Npcap[/].\n"
+        "  1. Descárgalo de https://npcap.com\n"
+        "  2. Instálalo marcando [cyan]\"WinPcap API-compatible mode\"[/]\n"
+        "  3. Abre esta terminal como [bold]Administrador[/] y reintenta.\n"
+        "En Linux: ejecuta con [bold]sudo[/].\n"
+    )
+    input("Enter para volver al menú...")
 
 
 if __name__ == "__main__":

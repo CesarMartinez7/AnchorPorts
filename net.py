@@ -50,6 +50,16 @@ def get_mac(ip: str, timeout: float = 2.0, retry: int = 2) -> str | None:
     return None
 
 
+def scan_network(gateway_ip: str, timeout: float = 2.0) -> list[tuple[str, str]]:
+    """Barrido ARP del /24. Devuelve [(ip, mac), ...] de quien responda."""
+    red = gateway_ip.rsplit(".", 1)[0] + ".0/24"
+    ans, _ = srp(
+        Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=red),
+        timeout=timeout, verbose=0,
+    )
+    return [(rcv.psrc, rcv.hwsrc) for _snt, rcv in ans]
+
+
 def get_own_mac() -> str:
     """MAC de nuestra interfaz de salida."""
     iface = get_default_route()[0]

@@ -24,6 +24,7 @@ class Target:
     mac: str | None
     stop: threading.Event = field(default_factory=threading.Event)
     thread: threading.Thread | None = None
+    expires_at: float | None = None  # epoch; None = indefinido
 
 
 class BlockManager:
@@ -42,8 +43,12 @@ class BlockManager:
             )
 
     # ---- API pública -------------------------------------------------
-    def block(self, ip: str) -> bool:
-        """Empieza a bloquear una IP. Devuelve False si ya estaba o sin MAC."""
+    def block(self, ip: str, duration: float | None = None) -> bool:
+        """Empieza a bloquear una IP. Devuelve False si ya estaba o sin MAC.
+
+        Si `duration` (segundos) se indica, el bloqueo expira solo; usa
+        `expired()` desde el bucle de refresco para desbloquear los vencidos.
+        """
         with self._lock:
             if ip in self._targets:
                 return False
@@ -51,6 +56,8 @@ class BlockManager:
             if not mac:
                 return False
             target = Target(ip=ip, mac=mac)
+            if duration:
+                target.expires_at = time.time() + duration
             target.thread = threading.Thread(
                 target=self._poison_loop, args=(target,), daemon=True
             )
@@ -80,6 +87,22 @@ class BlockManager:
 
     def is_blocked(self, ip: str) -> bool:
         return ip in self._targets
+
+    def remaining(self, ip: str) -> float | None:
+        """Segundos restantes de un bloqueo temporizado; None si es indefinido."""
+        target = self._targets.get(ip)
+        if not target or target.expires_at is None:
+            return None
+        return max(0.0, target.expires_at - time.time())
+
+    def expired(self) -> list[str]:
+        """IPs cuyo bloqueo temporizado ya venció (para auto-desbloquear)."""
+        now = time.time()
+        with self._lock:
+            return [
+                ip for ip, t in self._targets.items()
+                if t.expires_at is not None and now >= t.expires_at
+            ]
 
     # ---- Interno -----------------------------------------------------
     def _poison_loop(self, target: Target) -> None:

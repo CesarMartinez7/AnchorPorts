@@ -6,3 +6,4 @@ Pygments==2.19.1
 python-nmap==0.7.1
 rich==13.9.4
 scapy==2.6.1
+textual==8.2.8

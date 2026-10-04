@@ -21,20 +21,8 @@ from rich.table import Table
 from scapy.all import DNSQR, IP, sniff
 
 from arp_manager import BlockManager
-from net import get_gateway_ip, get_local_ip, set_ip_forwarding
+from net import get_gateway_ip, get_local_ip, scan_network, set_ip_forwarding
 from registry import Registry
-
-
-def scan_network(gateway_ip: str, timeout: float = 2.0) -> list[tuple[str, str]]:
-    """Barrido ARP del /24. Devuelve [(ip, mac), ...]."""
-    from scapy.all import ARP, Ether, srp
-
-    red = gateway_ip.rsplit(".", 1)[0] + ".0/24"
-    ans, _ = srp(
-        Ether(dst="ff:ff:ff:ff:ff:ff") / ARP(pdst=red),
-        timeout=timeout, verbose=0,
-    )
-    return [(rcv.psrc, rcv.hwsrc) for _snt, rcv in ans]
 
 
 class DNSMonitor:
