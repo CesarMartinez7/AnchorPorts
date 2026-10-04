@@ -28,6 +28,7 @@ from net import (
     get_gateway_ip,
     get_local_ip,
     get_vendor,
+    ip_forwarding_enabled,
     reverse_dns,
     scan_network,
     set_ip_forwarding,
@@ -131,10 +132,12 @@ class DnsDetailScreen(Screen):
         mac = d.mac if d else "—"
         vendor = (d.vendor if d and d.vendor else "—")
         host = self.hostname or "—"
-        modo = "[green]👁 monitoreando (tráfico redirigido, sin cortar)[/]"
-        if self._monitoring and not self._forwarding_ok:
-            modo += ("  [yellow]· aviso: el SO reportó que IP forwarding no se "
-                     "activó; si este equipo pierde Internet, sal del detalle[/]")
+        if self._monitoring:
+            modo = "[green]👁 monitoreando (tráfico redirigido, sin cortar)[/]"
+        else:
+            modo = ("[yellow]modo pasivo — IP forwarding no confirmado, no se "
+                    "redirige para no cortar la red (DNS de otros equipos solo "
+                    "con Linux/root)[/]")
         cap = (f"[dim]DNS capturado: {self.sniffer.total} total · "
                f"{len(self.sniffer.log.get(self.ip, {}))} de este equipo[/]")
         return (
@@ -153,15 +156,16 @@ class DnsDetailScreen(Screen):
         self._seen: set[str] = set()
         self._monitoring = False  # ¿llegamos a redirigir este dispositivo?
 
-        # Igual que la opción 2 (monitor de dominios, que sí funciona):
-        # activamos forwarding y redirigimos SIEMPRE en modo monitor. Con
-        # forwarding ON el tráfico fluye por nosotros (no se corta la red); solo
-        # lo inspeccionamos. No condicionamos al retorno porque no es fiable.
         # Pausa el re-escaneo ARP del panel para no des-redirigir al objetivo.
         self.app._scan_paused.set()
 
-        self._forwarding_ok = set_ip_forwarding(True)
-        if self.manager and not self.manager.is_active(self.ip):
+        # Activamos forwarding y CONFIRMAMOS que quedó activo. Solo entonces
+        # redirigimos: con forwarding el tráfico fluye por nosotros (no se corta
+        # la red). Si no se confirma, NO envenenamos (modo pasivo) para no dejar
+        # sin Internet al dispositivo.
+        set_ip_forwarding(True)
+        self._forwarding_ok = ip_forwarding_enabled() is True
+        if self._forwarding_ok and self.manager and not self.manager.is_active(self.ip):
             self.manager.block(self.ip, mode="monitor")  # redirige, no corta
             self._monitoring = True
 

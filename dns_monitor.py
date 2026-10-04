@@ -22,7 +22,13 @@ from textual.containers import Horizontal, Vertical
 from textual.widgets import DataTable, Footer, Header, Static
 
 from logo import ELISA_ASCII
-from net import get_gateway_ip, get_local_ip, scan_network, set_ip_forwarding
+from net import (
+    get_gateway_ip,
+    get_local_ip,
+    ip_forwarding_enabled,
+    scan_network,
+    set_ip_forwarding,
+)
 from registry import Registry
 
 SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
@@ -175,7 +181,11 @@ class DNSMonitor(App):
         except RuntimeError as e:
             self.arp_error = str(e)
 
-        self._forwarding_ok = set_ip_forwarding(True)
+        # Intentamos activar forwarding y CONFIRMAMOS que quedó activo. Solo si
+        # está confirmado redirigimos el tráfico; si no, NO envenenamos (eso
+        # cortaría la red de los dispositivos, justo lo que hay que evitar).
+        set_ip_forwarding(True)
+        self._forwarding_ok = ip_forwarding_enabled() is True
         threading.Thread(target=self._discover_loop, daemon=True).start()
         self.sniffer.start()
         self.set_interval(1.0, self._refresh)
@@ -189,7 +199,10 @@ class DNSMonitor(App):
                     if ip in (self.gateway_ip, self.local_ip):
                         continue
                     self.registry.seen(mac, ip)
-                    if (ip not in self.monitored and self.manager
+                    # Solo redirigir si el forwarding está confirmado: así
+                    # monitorear nunca corta la conexión del dispositivo.
+                    if (self._forwarding_ok and ip not in self.monitored
+                            and self.manager
                             and self.manager.block(ip, mode="monitor")):
                         self.monitored.add(ip)
             except Exception:
@@ -230,7 +243,10 @@ class DNSMonitor(App):
         self._update_status()
 
     def _update_status(self) -> None:
-        if not self.monitored:
+        if not self._forwarding_ok:
+            resumen = (f"modo pasivo · {self.sniffer.total} consultas captadas "
+                       "(no se redirige para no cortar la red)")
+        elif not self.monitored:
             resumen = f"{SPINNER[int(time.time() * 10) % len(SPINNER)]} buscando dispositivos..."
         else:
             resumen = (f"{len(self.monitored)} monitoreados · "
@@ -239,7 +255,8 @@ class DNSMonitor(App):
         if self.arp_error:
             base = f"⚠ ARP no disponible (Npcap/admin)    {base}"
         elif not self._forwarding_ok:
-            base = f"⚠ IP forwarding no activo (admin/root)    {base}"
+            base = (f"⚠ IP forwarding no confirmado — monitoreo pasivo "
+                    f"(para ver DNS de otros equipos: Linux/root)    {base}")
         self.query_one("#status", Static).update(base)
 
     # ---- Acciones ----------------------------------------------------
@@ -256,7 +273,8 @@ class DNSMonitor(App):
                 if ip in (self.gateway_ip, self.local_ip):
                     continue
                 self.registry.seen(mac, ip)
-                if (ip not in self.monitored and self.manager
+                if (self._forwarding_ok and ip not in self.monitored
+                        and self.manager
                         and self.manager.block(ip, mode="monitor")):
                     self.monitored.add(ip)
         except Exception:

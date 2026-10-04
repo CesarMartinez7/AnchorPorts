@@ -132,7 +132,31 @@ def set_ip_forwarding(enable: bool) -> bool:
     return False
 
 
+def ip_forwarding_enabled() -> bool | None:
+    """¿Está el IP forwarding REALMENTE activo ahora mismo?
+
+    True/False cuando se puede leer el estado (Linux/macOS). None cuando no se
+    puede confirmar (Windows: IPEnableRouter no surte efecto hasta reiniciar).
+    Sirve para NO envenenar/redirigir si no hay forwarding, y así no cortar la
+    red de los dispositivos.
+    """
+    try:
+        if sys.platform.startswith("linux"):
+            with open("/proc/sys/net/ipv4/ip_forward") as fh:
+                return fh.read().strip() == "1"
+        if sys.platform == "darwin":
+            out = subprocess.run(
+                ["sysctl", "-n", "net.inet.ip.forwarding"],
+                capture_output=True, text=True, check=True,
+            )
+            return out.stdout.strip() == "1"
+    except Exception:
+        return None
+    return None  # Windows u otros: no se puede confirmar
+
+
 if __name__ == "__main__":
     print("IP local :", get_local_ip())
     print("Gateway  :", get_gateway_ip())
     print("MAC prop.:", get_own_mac())
+    print("Forwarding activo:", ip_forwarding_enabled())
