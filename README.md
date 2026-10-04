@@ -1,34 +1,43 @@
 # Anchor Port
 
-Anchor Port es un escáner de puertos que utiliza la biblioteca `nmap-python` para ofrecer una herramienta sencilla y eficiente para escanear, no solo es para escaner tambien sirve para mandar direcciones mac falsas para cortar el trafico de un host y visualizar puertos abiertos en una máquina.
+Anchor Port es una herramienta para **administrar tu propia red local**: ver qué
+dispositivos están conectados, bloquearlos/expulsarlos y monitorear a qué
+dominios acceden. Usa `python-nmap` para escanear y `scapy` para el control por
+ARP. Todo es automático desde tablas: **no hay que escribir direcciones IP a mano.**
 
-## Características
+> ⚠️ Úsalo solo en una red que posees o administras. Hacer ARP spoofing o
+> inspeccionar tráfico en una red ajena es ilegal en la mayoría de países.
 
-- Escaneo de puertos utilizando `nmap-python y scapy`
-- Comandos sencillos para escanear puertos
-- Visualización de puertos abiertos en una máquina objetivo
+## Menú
+
+1. **Panel de control en vivo** — tabla automática de dispositivos; escribes el
+   número de uno para bloquearlo/expulsarlo o desbloquearlo.
+2. **Monitorear dominios (DNS)** — descubre toda la red sola y muestra a qué
+   dominios accede cada dispositivo.
+3. **Escaneo detallado** — puertos y sistema operativo de cada dispositivo.
+0. Salir (restaura las tablas ARP de la red).
+
+## Requisitos
+
+- **Permisos de administrador / root** (scapy envía paquetes en capa 2).
+- **Windows:** instalar [Npcap](https://npcap.com) con *"WinPcap API-compatible
+  mode"*. El monitoreo además necesita el servicio RemoteAccess para IP forwarding.
+- **Linux:** correr como root; funciona directo.
 
 ## Instalación
 
-Para instalar y configurar Anchor Port, es recomendable utilizar el script como __root__ sigue los siguientes pasos:
+```bash
+python3 -m venv entorno
+source entorno/bin/activate        # Windows: entorno\Scripts\activate
+pip install -r requerimentos.txt
+```
 
-1. **Crear un entorno virtual**  
-   Si intentas ejecutar el script directamente, es probable que te muestre errores de módulos faltantes. Para evitar esto, crea un entorno virtual:
+## Ejecución
 
-   ```bash
-   python3 -m venv <nombre_de_tu_entorno> 
+```bash
+# Linux/macOS
+sudo python3 main.py
 
-
-
-3. **Instalar las dependencias**
-
-    Para instalar las dependencias necesarias, utiliza el siguiente comando:
-      ```bash
-            pip install -r requerimentos.txt
-
-
-4. **Ejecutar el script**
-
-    Para ejecutar el script, solo tienes que correr el siguiente comando:
-    ```bash
-            sudo su && source <nombre_de_tu_entorno>/bin/activate &&  python3 main.py
+# Windows (terminal como Administrador)
+python main.py
+```

@@ -1,41 +1,53 @@
+"""Helpers de IP (compatibles con el código existente de main.py).
+
+Se apoya en net.py para la lógica real. Mantiene los nombres que main.py
+importa: _ip_default, get_addr_localhost, get_addr_gateway.
+"""
+from __future__ import annotations
+
+import socket
 import subprocess
 import sys
-import socket
+
+from net import get_local_ip
 
 
-# def get_addr_gateway():
-    
-
-
-def get_ip_for_machine () :
-    if(sys.platform == "linux"):
-        resultado = subprocess.run(args=["curl", "ifconfig.me"],capture_output=True,check=True)
-        ip = resultado
-    elif(sys.platform == "win32"):
-        print("Equivo macOS")
-    elif(sys.platform == "darwin"):
-        print("Equipo de macOS")
-    return {"output" : str(ip.stdout),"status_code" : ip.returncode} 
+def get_ip_for_machine() -> dict:
+    """IP pública del equipo. Cae a la IP local si no hay salida a Internet."""
+    try:
+        if sys.platform.startswith("linux") or sys.platform == "darwin":
+            resultado = subprocess.run(
+                ["curl", "-s", "ifconfig.me"],
+                capture_output=True, text=True, check=True, timeout=5,
+            )
+            return {"output": resultado.stdout.strip(),
+                    "status_code": resultado.returncode}
+        if sys.platform == "win32":
+            resultado = subprocess.run(
+                ["curl", "-s", "ifconfig.me"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if resultado.returncode == 0 and resultado.stdout.strip():
+                return {"output": resultado.stdout.strip(), "status_code": 0}
+    except Exception:
+        pass
+    # Fallback: IP local, siempre disponible y sin crashear.
+    return {"output": get_local_ip(), "status_code": -1}
 
 
 def get_addr_localhost() -> str:
-    ip : str = socket.gethostbyname(socket.gethostname())
-    return ip
+    return socket.gethostbyname(socket.gethostname())
 
 
-
-_ip_default : str = str(get_ip_for_machine().get("output", "output"))
-
-
-
-# Se pone gateway por ahora para saber que es la local.
-
+# IP de la subred local; main.py la usa con /24 para escanear la red.
 def get_addr_gateway() -> str:
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.connect(("8.8.8.8", 80))
-    resultado : str = s.getsockname()[0]
-    s.close()
-    return resultado
+    return get_local_ip()
 
 
-print(get_addr_gateway())
+_ip_default: str = str(get_ip_for_machine().get("output", "output"))
+
+
+if __name__ == "__main__":
+    print("IP pública/local:", _ip_default)
+    print("localhost       :", get_addr_localhost())
+    print("subred          :", get_addr_gateway())
