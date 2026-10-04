@@ -43,6 +43,8 @@ LEYENDA = (
     "  espacio bloquear\n"
     "  t       por tiempo\n"
     "  u       desbloquear\n"
+    "  e       expulsar (aislar)\n"
+    "  l       limitar MB\n"
     "  d       detalle DNS\n"
     "  n       renombrar\n"
     "  r       re-escanear\n"
@@ -50,6 +52,8 @@ LEYENDA = (
     "[b]Estados[/]\n"
     "  [green][+] permitido[/]\n"
     "  [red][x] bloqueado[/]\n"
+    "  [red][X] expulsado[/]\n"
+    "  [magenta][%] limitado[/]\n"
     "  [yellow][~] temporizado[/]\n"
     "  [cyan][o] monitoreando[/]"
 )
@@ -93,6 +97,34 @@ class TimedBlockScreen(ModalScreen[float | None]):
         except ValueError:
             minutos = 0
         self.dismiss(minutos * 60 if minutos > 0 else None)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
+class LimitScreen(ModalScreen[float | None]):
+    """Pide el tope de datos (en MB) para el modo límite."""
+
+    BINDINGS = [("escape", "cancel", "Cancelar")]
+
+    def __init__(self, ip: str):
+        super().__init__()
+        self.ip = ip
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="modal"):
+            yield Label(f"Limitar {self.ip} a cuántos MB de datos?")
+            yield Input(placeholder="ej. 100", id="mb", type="number")
+
+    def on_mount(self) -> None:
+        self.query_one("#mb", Input).focus()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        try:
+            mb = float(event.value)
+        except ValueError:
+            mb = 0
+        self.dismiss(mb if mb > 0 else None)
 
     def action_cancel(self) -> None:
         self.dismiss(None)
@@ -300,6 +332,8 @@ class AnchorTUI(App):
         ("space", "toggle", "Bloq/Desbloq"),
         ("t", "timed", "Bloq. temporizado"),
         ("u", "unblock", "Desbloquear"),
+        ("e", "expel", "Expulsar"),
+        ("l", "limit", "Limitar MB"),
         ("d,enter", "details", "Detalle DNS"),
         ("n", "rename", "Renombrar"),
         ("r", "scan", "Re-escanear"),
@@ -334,7 +368,8 @@ class AnchorTUI(App):
     def on_mount(self) -> None:
         table = self.query_one("#main-table", DataTable)
         table.border_title = "Dispositivos en la red"
-        table.border_subtitle = "j/k mover · espacio bloquear · d detalle · n renombrar"
+        table.border_subtitle = ("j/k mover · espacio bloquear · e expulsar · "
+                                  "l limitar MB · d detalle · n renombrar")
         table.add_column("IP", key="ip", width=16)
         table.add_column("Nombre", key="host", width=20)
         table.add_column("Fabricante", key="vendor", width=18)
@@ -384,6 +419,15 @@ class AnchorTUI(App):
             return Text(f"{self._spinner()} {self._pending[ip]}...", style="bold yellow")
         if self.manager and self.manager.is_monitoring(ip):
             return Text("[o] monitoreando", style="bold cyan")
+        if self.manager and self.manager.is_expelling(ip):
+            return Text("[X] expulsado", style="bold red")
+        if self.manager and self.manager.is_limiting(ip):
+            info = self.manager.limit_info(ip)
+            if info:
+                usado, tope, over = info
+                if over:
+                    return Text(f"[x] cortado ({tope:.0f}MB)", style="bold red")
+                return Text(f"[%] {usado:.1f}/{tope:.0f}MB", style="magenta")
         if self.manager and self.manager.is_blocked(ip):
             rem = self.manager.remaining(ip)
             if rem is not None:
@@ -506,6 +550,33 @@ class AnchorTUI(App):
 
         self.call_from_thread(done)
 
+    # -- Acción genérica en segundo plano (expulsar / limitar) ---------
+    def _start_action(self, ip: str, label: str, kwargs: dict, ok_msg: str) -> None:
+        if ip in self._pending:
+            return
+        self._pending[ip] = label
+        threading.Thread(
+            target=self._worker_action, args=(ip, kwargs, ok_msg), daemon=True
+        ).start()
+
+    def _worker_action(self, ip: str, kwargs: dict, ok_msg: str) -> None:
+        ok = self.manager.block(ip, **kwargs)
+
+        def done() -> None:
+            self._pending.pop(ip, None)
+            if ok:
+                self._set_status(ip, "blocked")
+                self.notify(ok_msg, severity="warning")
+            else:
+                self.notify(
+                    f"No se pudo con {ip}: no respondió al ARP "
+                    "(desconectado, dormido, o aislamiento de clientes).",
+                    severity="error",
+                )
+            self._refresh_table()
+
+        self.call_from_thread(done)
+
     def action_toggle(self) -> None:
         ip = self._selected_ip()
         if not self._guard(ip) or ip in self._pending:
@@ -518,8 +589,45 @@ class AnchorTUI(App):
     def action_unblock(self) -> None:
         ip = self._selected_ip()
         if (self.manager and ip and ip not in self._pending
-                and self.manager.is_blocked(ip)):
+                and self.manager.is_active(ip)):
             self._start_unblock(ip)
+
+    def action_expel(self) -> None:
+        ip = self._selected_ip()
+        if not self._guard(ip) or ip in self._pending:
+            return
+        if self.manager.is_active(ip):
+            self.notify(f"{ip} ya está activo; desbloquea con 'u' primero.",
+                        severity="warning")
+            return
+        # Peers = todos los demás hosts conocidos (para aislarlo de la LAN).
+        peers = [d.ip for d in self.registry.all()
+                 if d.ip not in (ip, self.gateway_ip, self.local_ip)]
+        self._start_action(ip, "expulsando", {"mode": "expel", "peers": peers},
+                           f"Expulsado {ip} de la red (aislado)")
+
+    def action_limit(self) -> None:
+        ip = self._selected_ip()
+        if not self._guard(ip) or ip in self._pending:
+            return
+        if self.manager.is_active(ip):
+            self.notify(f"{ip} ya está activo; desbloquea con 'u' primero.",
+                        severity="warning")
+            return
+        set_ip_forwarding(True)
+        if ip_forwarding_enabled() is not True:
+            self.notify(
+                "Limitar requiere IP forwarding activo (Linux/root); si no, "
+                "cortaría la red en vez de dejar pasar datos.", severity="error")
+            return
+
+        def _done(mb: float | None) -> None:
+            if mb:
+                self._start_action(ip, "limitando",
+                                   {"mode": "limit", "cap_mb": mb},
+                                   f"Limitando {ip} a {mb:.0f} MB")
+
+        self.push_screen(LimitScreen(ip), _done)
 
     def action_timed(self) -> None:
         ip = self._selected_ip()
