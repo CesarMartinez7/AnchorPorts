@@ -34,6 +34,7 @@ class DnsSniffer:
 
     def __init__(self):
         self.log: dict[str, dict[str, tuple[int, float]]] = defaultdict(dict)
+        self.total = 0          # consultas DNS capturadas en total (cualquier IP)
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -45,6 +46,7 @@ class DnsSniffer:
             dominio = pkt[DNSQR].qname.decode().rstrip(".")
         except Exception:
             return
+        self.total += 1
         prev = self.log[src].get(dominio, (0, 0.0))
         self.log[src][dominio] = (prev[0] + 1, time.time())
 

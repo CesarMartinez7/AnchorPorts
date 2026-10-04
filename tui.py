@@ -135,9 +135,11 @@ class DnsDetailScreen(Screen):
         if self._monitoring and not self._forwarding_ok:
             modo += ("  [yellow]· aviso: el SO reportó que IP forwarding no se "
                      "activó; si este equipo pierde Internet, sal del detalle[/]")
+        cap = (f"[dim]DNS capturado: {self.sniffer.total} total · "
+               f"{len(self.sniffer.log.get(self.ip, {}))} de este equipo[/]")
         return (
             f"[b cyan]{host}[/]  ·  [b]{self.ip}[/]    {modo}\n"
-            f"MAC: {mac}   Fabricante: {vendor}\n"
+            f"MAC: {mac}   Fabricante: {vendor}    {cap}\n"
             f"Puertos/SO: {self._ports_info}\n"
             "[dim]Dominios que consulta este dispositivo (DNS en vivo). "
             "escape/q/d para volver[/]"
@@ -155,6 +157,9 @@ class DnsDetailScreen(Screen):
         # activamos forwarding y redirigimos SIEMPRE en modo monitor. Con
         # forwarding ON el tráfico fluye por nosotros (no se corta la red); solo
         # lo inspeccionamos. No condicionamos al retorno porque no es fiable.
+        # Pausa el re-escaneo ARP del panel para no des-redirigir al objetivo.
+        self.app._scan_paused.set()
+
         self._forwarding_ok = set_ip_forwarding(True)
         if self.manager and not self.manager.is_active(self.ip):
             self.manager.block(self.ip, mode="monitor")  # redirige, no corta
@@ -162,8 +167,16 @@ class DnsDetailScreen(Screen):
 
         self.query_one("#detalle-info", Static).update(self._info_markup())
         self.sniffer.start()
-        threading.Thread(target=self._scan_ports, daemon=True).start()
+        # nmap se difiere para no competir con la redirección al arrancar.
+        self.set_timer(3.0, lambda: threading.Thread(
+            target=self._scan_ports, daemon=True).start())
         self.set_interval(1.0, self._refresh)
+
+    def _refresh_header(self) -> None:
+        try:
+            self.query_one("#detalle-info", Static).update(self._info_markup())
+        except Exception:
+            pass
 
     def _scan_ports(self) -> None:
         """Escaneo nmap de este dispositivo (puertos abiertos + SO)."""
@@ -186,6 +199,7 @@ class DnsDetailScreen(Screen):
         )
 
     def _refresh(self) -> None:
+        self._refresh_header()  # contador de capturas en vivo
         table = self.query_one(DataTable)
         for dom, cnt, ts in self.sniffer.domains(self.ip):
             last = f"{int(time.time() - ts)}s"
@@ -203,6 +217,8 @@ class DnsDetailScreen(Screen):
             self.manager.unblock(self.ip)
         if self._forwarding_ok:
             set_ip_forwarding(False)
+        # Reanuda el re-escaneo del panel.
+        self.app._scan_paused.clear()
         self.app.pop_screen()
 
 
@@ -268,6 +284,9 @@ class AnchorTUI(App):
         self._stop = threading.Event()
         self._rows: set[str] = set()  # ips ya presentes en la tabla
         self._pending: dict[str, str] = {}  # ip -> "bloqueando" | "cerrando"
+        # Pausa el re-escaneo ARP mientras se monitorea un dispositivo, para no
+        # refrescar las tablas ARP y "des-redirigir" al objetivo.
+        self._scan_paused = threading.Event()
 
     # ---- Composición -------------------------------------------------
     def compose(self) -> ComposeResult:
@@ -307,11 +326,12 @@ class AnchorTUI(App):
     # ---- Datos en segundo plano -------------------------------------
     def _scan_loop(self, every: float = 10.0) -> None:
         while not self._stop.is_set():
-            try:
-                for ip, mac in scan_network(self.gateway_ip):
-                    self.registry.seen(mac, ip, reverse_dns(ip), get_vendor(mac))
-            except Exception:
-                pass
+            if not self._scan_paused.is_set():
+                try:
+                    for ip, mac in scan_network(self.gateway_ip):
+                        self.registry.seen(mac, ip, reverse_dns(ip), get_vendor(mac))
+                except Exception:
+                    pass
             self._stop.wait(every)
 
     def _tick(self) -> None:
