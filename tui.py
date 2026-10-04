@@ -131,13 +131,10 @@ class DnsDetailScreen(Screen):
         mac = d.mac if d else "—"
         vendor = (d.vendor if d and d.vendor else "—")
         host = self.hostname or "—"
-        if getattr(self, "_monitoring", False):
-            modo = "[green]👁 monitoreando (tráfico redirigido)[/]"
-        else:
-            modo = ("[yellow]modo pasivo[/] — sin IP forwarding no se redirige "
-                    "el tráfico; en redes conmutadas puede que no veas DNS de "
-                    "este equipo (en Windows requiere admin + RemoteAccess; "
-                    "en Linux, root)")
+        modo = "[green]👁 monitoreando (tráfico redirigido, sin cortar)[/]"
+        if self._monitoring and not self._forwarding_ok:
+            modo += ("  [yellow]· aviso: el SO reportó que IP forwarding no se "
+                     "activó; si este equipo pierde Internet, sal del detalle[/]")
         return (
             f"[b cyan]{host}[/]  ·  [b]{self.ip}[/]    {modo}\n"
             f"MAC: {mac}   Fabricante: {vendor}\n"
@@ -154,11 +151,12 @@ class DnsDetailScreen(Screen):
         self._seen: set[str] = set()
         self._monitoring = False  # ¿llegamos a redirigir este dispositivo?
 
-        # Solo redirigimos si el IP forwarding se activó de verdad. Si no,
-        # envenenar cortaría la conexión (no veríamos nada), así que nos
-        # quedamos en modo pasivo y lo avisamos.
+        # Igual que la opción 2 (monitor de dominios, que sí funciona):
+        # activamos forwarding y redirigimos SIEMPRE en modo monitor. Con
+        # forwarding ON el tráfico fluye por nosotros (no se corta la red); solo
+        # lo inspeccionamos. No condicionamos al retorno porque no es fiable.
         self._forwarding_ok = set_ip_forwarding(True)
-        if self._forwarding_ok and self.manager and not self.manager.is_active(self.ip):
+        if self.manager and not self.manager.is_active(self.ip):
             self.manager.block(self.ip, mode="monitor")  # redirige, no corta
             self._monitoring = True
 
