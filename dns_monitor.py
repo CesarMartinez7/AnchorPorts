@@ -15,14 +15,36 @@ import threading
 import time
 from collections import defaultdict
 
-from rich.console import Console
-from rich.live import Live
-from rich.table import Table
+from rich.text import Text
 from scapy.all import DNSQR, IP, sniff
+from textual.app import App, ComposeResult
+from textual.containers import Horizontal, Vertical
+from textual.widgets import DataTable, Footer, Header, Static
 
-from arp_manager import BlockManager
+from logo import ELISA_ASCII
 from net import get_gateway_ip, get_local_ip, scan_network, set_ip_forwarding
 from registry import Registry
+
+SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
+LEYENDA_DNS = (
+    "[b]Teclas[/]\n"
+    "  r   re-escanear\n"
+    "  q   salir (restaura)\n\n"
+    "[b]Qué ves[/]\n"
+    "  dominios DNS que\n"
+    "  consulta cada equipo\n"
+    "  (no descifra HTTPS)"
+)
+
+
+def _ago(ts: float) -> str:
+    d = int(time.time() - ts)
+    if d < 60:
+        return f"{d}s"
+    if d < 3600:
+        return f"{d // 60}m"
+    return f"{d // 3600}h"
 
 
 class DnsSniffer:
@@ -71,111 +93,166 @@ class DnsSniffer:
         return [(dom, cnt, ts) for dom, (cnt, ts) in orden]
 
 
-class DNSMonitor:
+class DNSMonitor(App):
+    """Monitor de dominios DNS de toda la red (tema salmón, estilo panel)."""
+
+    TITLE = "AnchorPort — Monitor DNS"
+    SUB_TITLE = "a qué dominios accede cada dispositivo"
+
+    CSS = """
+    Screen { background: $surface; }
+    #status {
+        height: 1; padding: 0 2;
+        background: #d9766a; color: $text; text-style: bold;
+    }
+    #cuerpo { height: 1fr; padding: 1 1 0 1; }
+    #dns-table {
+        width: 1fr; height: 1fr;
+        border: round #d9766a; padding: 0 1;
+        border-title-color: #d9766a; border-title-align: center;
+        border-subtitle-color: $text-muted; border-subtitle-align: right;
+    }
+    #dns-table > .datatable--header {
+        background: #d9766a; color: $text; text-style: bold;
+    }
+    #dns-table > .datatable--cursor { background: #d9766a 45%; text-style: bold; }
+    #sidebar {
+        width: 34; height: 1fr; margin-left: 1;
+        border: round #d9766a; padding: 1 1;
+        border-title-color: #d9766a; border-title-align: center;
+    }
+    #logo { color: #d9766a; height: auto; content-align: center top; }
+    #legend { height: auto; margin-top: 1; color: $text-muted; }
+    """
+
+    BINDINGS = [
+        ("r", "rescan", "Re-escanear"),
+        ("q", "quit", "Salir"),
+    ]
+
     def __init__(self):
-        self.console = Console()
+        super().__init__()
         self.gateway_ip = get_gateway_ip()
         self.local_ip = get_local_ip()
         self.registry = Registry()
-        self.manager = BlockManager(self.gateway_ip)
-        self._stop = threading.Event()
+        self.manager = None
+        self.arp_error: str | None = None
+        self.sniffer = DnsSniffer()
         self.monitored: set[str] = set()
-        # ip -> {dominio: (conteo, ultima_vez)}
-        self.log: dict[str, dict[str, tuple[int, float]]] = defaultdict(dict)
+        self._rows: set[str] = set()  # claves "ip|dominio" ya en la tabla
+        self._stop = threading.Event()
         self._forwarding_ok = False
 
+    # ---- Composición -------------------------------------------------
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=True)
+        yield Static(id="status")
+        with Horizontal(id="cuerpo"):
+            yield DataTable(id="dns-table", cursor_type="row", zebra_stripes=True)
+            with Vertical(id="sidebar"):
+                yield Static(Text(ELISA_ASCII, style="#d9766a"), id="logo")
+                yield Static(LEYENDA_DNS, id="legend")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        table = self.query_one(DataTable)
+        table.border_title = "Dominios por dispositivo (DNS)"
+        table.border_subtitle = "r re-escanear · q salir"
+        table.add_column("Dispositivo", key="dev", width=24)
+        table.add_column("Dominio", key="dom", width=42)
+        table.add_column("Veces", key="cnt", width=7)
+        table.add_column("Última", key="last", width=8)
+        table.focus()
+
+        try:
+            from arp_manager import BlockManager
+            self.manager = BlockManager(self.gateway_ip)
+        except RuntimeError as e:
+            self.arp_error = str(e)
+
+        self._forwarding_ok = set_ip_forwarding(True)
+        threading.Thread(target=self._discover_loop, daemon=True).start()
+        self.sniffer.start()
+        self.set_interval(1.0, self._refresh)
+        self._update_status()
+
+    # ---- Datos en segundo plano -------------------------------------
     def _discover_loop(self, every: float = 15.0) -> None:
-        """Descubre dispositivos y empieza a redirigirlos automáticamente."""
         while not self._stop.is_set():
-            for ip, mac in scan_network(self.gateway_ip):
-                if ip in (self.gateway_ip, self.local_ip):
-                    continue
-                self.registry.seen(mac, ip)
-                if ip not in self.monitored and self.manager.block(ip):
-                    # block() aquí = redirigir, porque forwarding está ON
-                    self.monitored.add(ip)
+            try:
+                for ip, mac in scan_network(self.gateway_ip):
+                    if ip in (self.gateway_ip, self.local_ip):
+                        continue
+                    self.registry.seen(mac, ip)
+                    if (ip not in self.monitored and self.manager
+                            and self.manager.block(ip, mode="monitor")):
+                        self.monitored.add(ip)
+            except Exception:
+                pass
             self._stop.wait(every)
 
-    def _on_packet(self, pkt) -> None:
-        if not pkt.haslayer(DNSQR) or not pkt.haslayer(IP):
-            return
-        src = pkt[IP].src
-        if src not in self.monitored:
-            return
-        try:
-            dominio = pkt[DNSQR].qname.decode().rstrip(".")
-        except Exception:
-            return
-        prev = self.log[src].get(dominio, (0, 0.0))
-        self.log[src][dominio] = (prev[0] + 1, time.time())
-
-    def _sniff_loop(self) -> None:
-        sniff(
-            filter="udp port 53", prn=self._on_packet, store=0,
-            stop_filter=lambda _: self._stop.is_set(),
-        )
-
+    # ---- Render ------------------------------------------------------
     def _hostname(self, ip: str) -> str:
         dev = next((d for d in self.registry.all() if d.ip == ip), None)
         return dev.hostname if dev and dev.hostname else ip
 
-    def render(self) -> Table:
-        table = Table(
-            title=f"Dominios por dispositivo (DNS) — {len(self.monitored)} monitoreados"
-        )
-        table.add_column("Dispositivo", style="cyan")
-        table.add_column("Dominio", style="white")
-        table.add_column("Veces", justify="right", style="magenta")
-        table.add_column("Última", justify="right", style="dim")
-
-        if not self.monitored:
-            table.add_row("[dim]buscando dispositivos...[/]", "", "", "")
-            return table
-
+    def _refresh(self) -> None:
+        table = self.query_one(DataTable)
         for ip in sorted(self.monitored):
-            dominios = sorted(
-                self.log[ip].items(), key=lambda kv: kv[1][1], reverse=True
-            )
             etiqueta = self._hostname(ip)
-            if not dominios:
-                table.add_row(etiqueta, "[dim]— sin consultas aún —[/]", "", "")
-                continue
-            for i, (dom, (cnt, ts)) in enumerate(dominios[:10]):
-                table.add_row(
-                    etiqueta if i == 0 else "",
-                    dom, str(cnt), f"{int(time.time() - ts)}s",
-                )
-        return table
+            for dom, cnt, ts in self.sniffer.domains(ip):
+                clave = f"{ip}|{dom}"
+                last = _ago(ts)
+                if clave in self._rows:
+                    table.update_cell(clave, "cnt", str(cnt))
+                    table.update_cell(clave, "last", last)
+                else:
+                    table.add_row(etiqueta, dom, str(cnt), last, key=clave)
+                    self._rows.add(clave)
+        self._update_status()
 
-    def run(self) -> None:
-        self._forwarding_ok = set_ip_forwarding(True)
-        if not self._forwarding_ok:
-            self.console.print(
-                "[yellow]Aviso:[/] no se pudo activar IP forwarding (en Windows "
-                "necesita admin + servicio RemoteAccess). Sin él los dispositivos "
-                "podrían quedarse sin Internet mientras monitoreas. En Linux, root."
-            )
-        threading.Thread(target=self._discover_loop, daemon=True).start()
-        threading.Thread(target=self._sniff_loop, daemon=True).start()
-        self.console.print("Monitoreando toda la red. Ctrl+C para detener y restaurar.\n")
+    def _update_status(self) -> None:
+        if not self.monitored:
+            resumen = f"{SPINNER[int(time.time() * 10) % len(SPINNER)]} buscando dispositivos..."
+        else:
+            resumen = (f"{len(self.monitored)} monitoreados · "
+                       f"{self.sniffer.total} consultas DNS capturadas")
+        base = f"📡 {self.gateway_ip}    🖥 {self.local_ip}    {resumen}"
+        if self.arp_error:
+            base = f"⚠ ARP no disponible (Npcap/admin)    {base}"
+        elif not self._forwarding_ok:
+            base = f"⚠ IP forwarding no activo (admin/root)    {base}"
+        self.query_one("#status", Static).update(base)
+
+    # ---- Acciones ----------------------------------------------------
+    def action_rescan(self) -> None:
+        if not self.manager:
+            self.notify("ARP no disponible (falta Npcap / admin).", severity="error")
+            return
+        self.notify("Re-escaneando...")
+        threading.Thread(target=self._scan_once, daemon=True).start()
+
+    def _scan_once(self) -> None:
         try:
-            with Live(self.render(), console=self.console, refresh_per_second=1) as live:
-                while not self._stop.is_set():
-                    time.sleep(1)
-                    live.update(self.render())
-        except KeyboardInterrupt:
+            for ip, mac in scan_network(self.gateway_ip):
+                if ip in (self.gateway_ip, self.local_ip):
+                    continue
+                self.registry.seen(mac, ip)
+                if (ip not in self.monitored and self.manager
+                        and self.manager.block(ip, mode="monitor")):
+                    self.monitored.add(ip)
+        except Exception:
             pass
-        finally:
-            self.shutdown()
 
-    def shutdown(self) -> None:
+    def action_quit(self) -> None:
         self._stop.set()
-        self.console.print("\n[yellow]Restaurando red y apagando forwarding...[/]")
-        self.manager.unblock_all()
+        self.sniffer.stop()
+        if self.manager:
+            self.manager.unblock_all()
         if self._forwarding_ok:
             set_ip_forwarding(False)
         self.registry.close()
-        self.console.print("[green]Listo.[/]")
+        self.exit()
 
 
 if __name__ == "__main__":
