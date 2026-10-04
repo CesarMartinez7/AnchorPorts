@@ -4,15 +4,30 @@ from time import sleep
 
 import nmap
 from colorama import Fore
+from rich.align import Align
+from rich.columns import Columns
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text
 
 from fonts import f
 from get_host import _ip_default
-from net import get_local_ip
+from logo import ELISA_ASCII, ELISA_COLOR
+from net import get_gateway_ip, get_local_ip
 
 machine: str = sys.platform.title()
+SALMON = ELISA_COLOR  # #d9766a, el color de la mascota
+
+OPCIONES = [
+    ("1", "Panel interactivo",
+     "Ver, bloquear y expulsar dispositivos por teclado"),
+    ("2", "Monitor de dominios",
+     "A qué dominios (DNS) accede cada dispositivo"),
+    ("3", "Escaneo detallado",
+     "Puertos abiertos y sistema operativo"),
+    ("0", "Salir", "Cerrar AnchorPort"),
+]
 
 
 def clear_console():
@@ -71,20 +86,50 @@ def escaneo_detallado() -> None:
         sleep(0.8)
 
 
-def main(console) -> None:
-    menu = Panel(
-        """
-        [bold green]1.[/] Panel interactivo (teclado: j/k mover · espacio bloquear · t temporizado)
-        [bold green]2.[/] Monitorear dominios de la red (DNS)
-        [bold green]3.[/] Escaneo detallado (puertos y sistema operativo)
-        [bold green]0.[/] Salir
-        """,
-        title="AnchorPort — todo automático, sin escribir IPs",
-        expand=False,
+def render_inicio(console) -> None:
+    """Dibuja la pantalla de inicio: banner, logo y menú de opciones."""
+    clear_console()
+
+    banner = Text(f.renderText("Anchor Port"), style=f"bold {SALMON}")
+    console.print(Align.center(banner))
+
+    logo = Text(ELISA_ASCII, style=SALMON, justify="center")
+
+    opciones = Table.grid(padding=(0, 2))
+    opciones.add_column(justify="center")
+    opciones.add_column(justify="left")
+    for key, nombre, desc in OPCIONES:
+        opciones.add_row(
+            Text(f" {key} ", style=f"bold white on {SALMON}"),
+            Text.assemble((nombre + "\n", "bold"), (desc, "dim")),
+        )
+    panel = Panel(
+        opciones,
+        title="[bold]¿Qué quieres hacer?[/]",
+        subtitle="[dim]todo automático · sin escribir IPs[/]",
+        border_style=SALMON,
+        padding=(1, 2),
     )
-    console.print(menu)
+
+    console.print(Columns([logo, panel], padding=(0, 4), align="center"))
+    console.print(
+        Align.center(
+            Text.assemble(
+                ("SO ", "dim"), (f"{machine}", "bold"),
+                ("    IP ", "dim"), (f"{_ip_default}", SALMON),
+                ("    gateway ", "dim"), (get_gateway_ip(), SALMON),
+            )
+        )
+    )
+
+
+def main(console) -> None:
+    render_inicio(console)
     try:
-        opcion = int(input(f" [{machine}] :: "))
+        entrada = console.input(
+            f"\n  [bold {SALMON}]>[/] Elige una opción [dim](0-3)[/]: "
+        ).strip()
+        opcion = int(entrada)
     except ValueError:
         return
 
@@ -118,12 +163,9 @@ def _aviso_arp(console, error) -> None:
 
 
 if __name__ == "__main__":
+    console = Console()
     while True:
         try:
-            console = Console()
-            print(f.renderText("Anchor Port"), end="\n")
-            print(Fore.BLUE + f"Sistema operativo: {machine}")
-            print(f"IP local/pública: {_ip_default}")
             main(console=console)
         except KeyboardInterrupt:
             sys.exit()
