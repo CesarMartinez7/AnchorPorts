@@ -25,6 +25,50 @@ from net import get_gateway_ip, get_local_ip, scan_network, set_ip_forwarding
 from registry import Registry
 
 
+class DnsSniffer:
+    """Sniffer de DNS reutilizable: registra dominios por IP de origen.
+
+    No hace ARP ni forwarding; de eso se encarga quien lo use (p. ej. el panel
+    cuando entra al detalle de un dispositivo). Guarda {ip: {dominio: (n, ts)}}.
+    """
+
+    def __init__(self):
+        self.log: dict[str, dict[str, tuple[int, float]]] = defaultdict(dict)
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def _on_packet(self, pkt) -> None:
+        if not pkt.haslayer(DNSQR) or not pkt.haslayer(IP):
+            return
+        try:
+            src = pkt[IP].src
+            dominio = pkt[DNSQR].qname.decode().rstrip(".")
+        except Exception:
+            return
+        prev = self.log[src].get(dominio, (0, 0.0))
+        self.log[src][dominio] = (prev[0] + 1, time.time())
+
+    def start(self) -> None:
+        self._stop.clear()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def _run(self) -> None:
+        sniff(
+            filter="udp port 53", prn=self._on_packet, store=0,
+            stop_filter=lambda _: self._stop.is_set(),
+        )
+
+    def stop(self) -> None:
+        self._stop.set()
+
+    def domains(self, ip: str) -> list[tuple[str, int, float]]:
+        """[(dominio, veces, ultima_ts)] del dispositivo, más reciente primero."""
+        items = self.log.get(ip, {})
+        orden = sorted(items.items(), key=lambda kv: kv[1][1], reverse=True)
+        return [(dom, cnt, ts) for dom, (cnt, ts) in orden]
+
+
 class DNSMonitor:
     def __init__(self):
         self.console = Console()

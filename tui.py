@@ -18,12 +18,34 @@ import time
 
 from rich.text import Text
 from textual.app import App, ComposeResult
-from textual.containers import Vertical
-from textual.screen import ModalScreen
+from textual.containers import Horizontal, Vertical
+from textual.screen import ModalScreen, Screen
 from textual.widgets import DataTable, Footer, Header, Input, Label, Static
 
-from net import get_gateway_ip, get_local_ip, scan_network
+from dns_monitor import DnsSniffer
+from logo import logo_markup
+from net import (
+    get_gateway_ip,
+    get_local_ip,
+    scan_network,
+    set_ip_forwarding,
+)
 from registry import Registry
+
+LEYENDA = (
+    "[b]Teclas[/]\n"
+    "  j / k   mover\n"
+    "  espacio bloquear\n"
+    "  t       por tiempo\n"
+    "  u       desbloquear\n"
+    "  d       detalle DNS\n"
+    "  r       re-escanear\n"
+    "  q       salir\n\n"
+    "[b]Estados[/]\n"
+    "  [green]🟢 permitido[/]\n"
+    "  [red]🔴 bloqueado[/]\n"
+    "  [yellow]⏳ temporizado[/]"
+)
 
 
 def _ago(ts: float) -> str:
@@ -69,10 +91,82 @@ class TimedBlockScreen(ModalScreen[float | None]):
         self.dismiss(None)
 
 
+class DnsDetailScreen(Screen):
+    """Segunda tabla: qué dominios consulta UN dispositivo (en vivo).
+
+    Redirige ese dispositivo por nosotros (forwarding ON) y escucha su DNS.
+    Al salir restaura. Nota: activar forwarding afecta temporalmente a otros
+    bloqueos, por eso es una vista aparte.
+    """
+
+    BINDINGS = [("escape,q,d", "cerrar", "Volver")]
+
+    CSS = """
+    #detalle-info { height: 2; padding: 0 1; color: $text-muted; }
+    DataTable { height: 1fr; }
+    """
+
+    def __init__(self, ip: str, hostname: str, manager):
+        super().__init__()
+        self.ip = ip
+        self.hostname = hostname
+        self.manager = manager
+        self.sniffer = DnsSniffer()
+        self._forwarding_ok = False
+
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=True)
+        etiqueta = self.hostname or self.ip
+        yield Static(
+            f"Dominios consultados por [b cyan]{etiqueta}[/] ([b]{self.ip}[/])\n"
+            "[dim]escuchando DNS en vivo — escape/q/d para volver[/]",
+            id="detalle-info",
+        )
+        yield DataTable(cursor_type="row", zebra_stripes=True)
+        yield Footer()
+
+    def on_mount(self) -> None:
+        table = self.query_one(DataTable)
+        table.add_column("Dominio", key="dom", width=40)
+        table.add_column("Veces", key="cnt", width=7)
+        table.add_column("Última", key="last", width=8)
+        self._seen: set[str] = set()
+
+        self._forwarding_ok = set_ip_forwarding(True)
+        if self.manager and not self.manager.is_blocked(self.ip):
+            self.manager.block(self.ip)  # con forwarding ON = redirigir
+        self.sniffer.start()
+        self.set_interval(1.0, self._refresh)
+
+    def _refresh(self) -> None:
+        table = self.query_one(DataTable)
+        for dom, cnt, ts in self.sniffer.domains(self.ip):
+            last = f"{int(time.time() - ts)}s"
+            if dom in self._seen:
+                table.update_cell(dom, "cnt", str(cnt))
+                table.update_cell(dom, "last", last)
+            else:
+                table.add_row(dom, str(cnt), last, key=dom)
+                self._seen.add(dom)
+
+    def action_cerrar(self) -> None:
+        self.sniffer.stop()
+        # Dejamos de redirigir este dispositivo y restauramos.
+        if self.manager and self.manager.is_blocked(self.ip):
+            self.manager.unblock(self.ip)
+        if self._forwarding_ok:
+            set_ip_forwarding(False)
+        self.app.pop_screen()
+
+
 class AnchorTUI(App):
     CSS = """
     #status { height: 1; color: $text-muted; padding: 0 1; }
-    DataTable { height: 1fr; }
+    #cuerpo { height: 1fr; }
+    #main-table { width: 1fr; }
+    #sidebar { width: 34; padding: 0 1; }
+    #logo { color: #d9766a; height: auto; }
+    #legend { height: auto; margin-top: 1; }
     #modal {
         width: 50; height: auto; padding: 1 2;
         border: round $accent; background: $panel;
@@ -86,6 +180,7 @@ class AnchorTUI(App):
         ("space", "toggle", "Bloq/Desbloq"),
         ("t", "timed", "Bloq. temporizado"),
         ("u", "unblock", "Desbloquear"),
+        ("d,enter", "details", "Detalle DNS"),
         ("r", "scan", "Re-escanear"),
         ("q", "quit", "Salir"),
     ]
@@ -104,12 +199,15 @@ class AnchorTUI(App):
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         yield Static(id="status")
-        table = DataTable(cursor_type="row", zebra_stripes=True)
-        yield table
+        with Horizontal(id="cuerpo"):
+            yield DataTable(id="main-table", cursor_type="row", zebra_stripes=True)
+            with Vertical(id="sidebar"):
+                yield Static(logo_markup(), id="logo")
+                yield Static(LEYENDA, id="legend")
         yield Footer()
 
     def on_mount(self) -> None:
-        table = self.query_one(DataTable)
+        table = self.query_one("#main-table", DataTable)
         table.add_column("IP", key="ip", width=16)
         table.add_column("Hostname", key="host", width=22)
         table.add_column("MAC", key="mac", width=19)
@@ -161,7 +259,7 @@ class AnchorTUI(App):
         return Text("🟢 permitido", style="green")
 
     def _refresh_table(self) -> None:
-        table = self.query_one(DataTable)
+        table = self.query_one("#main-table", DataTable)
         for dev in self.registry.all():
             estado = self._estado(dev.ip)
             visto = _ago(dev.last_seen)
@@ -186,7 +284,7 @@ class AnchorTUI(App):
 
     # ---- Acciones de teclado ----------------------------------------
     def _selected_ip(self) -> str | None:
-        table = self.query_one(DataTable)
+        table = self.query_one("#main-table", DataTable)
         try:
             key = table.coordinate_to_cell_key(table.cursor_coordinate).row_key
             return key.value
@@ -194,10 +292,10 @@ class AnchorTUI(App):
             return None
 
     def action_down(self) -> None:
-        self.query_one(DataTable).action_cursor_down()
+        self.query_one("#main-table", DataTable).action_cursor_down()
 
     def action_up(self) -> None:
-        self.query_one(DataTable).action_cursor_up()
+        self.query_one("#main-table", DataTable).action_cursor_up()
 
     def _guard(self, ip: str | None) -> bool:
         if not self.manager:
@@ -248,6 +346,20 @@ class AnchorTUI(App):
                 self._refresh_table()
 
         self.push_screen(TimedBlockScreen(ip), _done)
+
+    def action_details(self) -> None:
+        ip = self._selected_ip()
+        if not ip:
+            return
+        if not self.manager:
+            self.notify("DNS no disponible (falta Npcap / admin).", severity="error")
+            return
+        if ip in (self.gateway_ip, self.local_ip):
+            self.notify("Ese es tu equipo / el router.", severity="warning")
+            return
+        dev = next((d for d in self.registry.all() if d.ip == ip), None)
+        hostname = dev.hostname if dev else ""
+        self.push_screen(DnsDetailScreen(ip, hostname, self.manager))
 
     def action_scan(self) -> None:
         self.notify("Re-escaneando...")
