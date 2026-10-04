@@ -44,6 +44,7 @@ LEYENDA = (
     "  t       por tiempo\n"
     "  u       desbloquear\n"
     "  d       detalle DNS\n"
+    "  n       renombrar\n"
     "  r       re-escanear\n"
     "  q       salir\n\n"
     "[b]Estados[/]\n"
@@ -91,6 +92,31 @@ class TimedBlockScreen(ModalScreen[float | None]):
         except ValueError:
             minutos = 0
         self.dismiss(minutos * 60 if minutos > 0 else None)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
+class RenameScreen(ModalScreen[str | None]):
+    """Pide un nombre personalizado para el dispositivo."""
+
+    BINDINGS = [("escape", "cancel", "Cancelar")]
+
+    def __init__(self, ip: str, actual: str):
+        super().__init__()
+        self.ip = ip
+        self.actual = actual
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="modal"):
+            yield Label(f"Nombre para {self.ip}  [dim](Enter guarda · vacío borra)[/]")
+            yield Input(value=self.actual, placeholder="ej. iPhone de Ana", id="nom")
+
+    def on_mount(self) -> None:
+        self.query_one("#nom", Input).focus()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        self.dismiss(event.value.strip())
 
     def action_cancel(self) -> None:
         self.dismiss(None)
@@ -274,6 +300,7 @@ class AnchorTUI(App):
         ("t", "timed", "Bloq. temporizado"),
         ("u", "unblock", "Desbloquear"),
         ("d,enter", "details", "Detalle DNS"),
+        ("n", "rename", "Renombrar"),
         ("r", "scan", "Re-escanear"),
         ("q", "quit", "Salir"),
     ]
@@ -306,9 +333,9 @@ class AnchorTUI(App):
     def on_mount(self) -> None:
         table = self.query_one("#main-table", DataTable)
         table.border_title = "Dispositivos en la red"
-        table.border_subtitle = "j/k mover · espacio bloquear · d detalle"
+        table.border_subtitle = "j/k mover · espacio bloquear · d detalle · n renombrar"
         table.add_column("IP", key="ip", width=16)
-        table.add_column("Hostname", key="host", width=20)
+        table.add_column("Nombre", key="host", width=20)
         table.add_column("Fabricante", key="vendor", width=18)
         table.add_column("MAC", key="mac", width=19)
         table.add_column("Estado", key="estado", width=22)
@@ -370,7 +397,11 @@ class AnchorTUI(App):
         for dev in self.registry.all():
             estado = self._estado(dev.ip)
             visto = _ago(dev.last_seen)
-            host = dev.hostname or "—"
+            # Nombre a mostrar: alias (si se renombró) resaltado, si no hostname.
+            if dev.alias:
+                host = Text(dev.alias, style="bold")
+            else:
+                host = Text(dev.hostname or "—", style="dim")
             vendor = dev.vendor or "—"
             if dev.ip in self._rows:
                 table.update_cell(dev.ip, "estado", estado)
@@ -499,6 +530,27 @@ class AnchorTUI(App):
                 self._start_block(ip, duration=seg)
 
         self.push_screen(TimedBlockScreen(ip), _done)
+
+    def action_rename(self) -> None:
+        ip = self._selected_ip()
+        if not ip:
+            return
+        dev = next((d for d in self.registry.all() if d.ip == ip), None)
+        if not dev:
+            return
+
+        def _done(nombre: str | None) -> None:
+            if nombre is None:
+                return
+            self.registry.set_alias(dev.mac, nombre)
+            table = self.query_one("#main-table", DataTable)
+            mostrado = (Text(nombre, style="bold") if nombre
+                        else Text(dev.hostname or "—", style="dim"))
+            table.update_cell(ip, "host", mostrado)
+            self.notify(f"{ip} renombrado a «{nombre}»" if nombre
+                        else f"Nombre de {ip} borrado")
+
+        self.push_screen(RenameScreen(ip, dev.alias), _done)
 
     def action_details(self) -> None:
         ip = self._selected_ip()

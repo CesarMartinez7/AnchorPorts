@@ -217,9 +217,9 @@ class DNSMonitor(App):
 
     # ---- Render ------------------------------------------------------
     def _hostnames(self) -> dict[str, str]:
-        """Mapa ip->hostname con UNA sola consulta (evita golpear la BD por ip)."""
+        """Mapa ip->nombre (alias/hostname/ip) con UNA sola consulta a la BD."""
         try:
-            return {d.ip: (d.hostname or d.ip) for d in self.registry.all()}
+            return {d.ip: d.nombre for d in self.registry.all()}
         except Exception:
             return {}
 

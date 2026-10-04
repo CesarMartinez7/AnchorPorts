@@ -22,6 +22,12 @@ class Device:
     last_seen: float
     vendor: str = "—"
     first_seen: float = 0.0
+    alias: str = ""  # nombre personalizado puesto por el usuario
+
+    @property
+    def nombre(self) -> str:
+        """Nombre a mostrar: alias si lo hay, si no el hostname, si no la IP."""
+        return self.alias or self.hostname or self.ip
 
 
 class Registry:
@@ -49,6 +55,8 @@ class Registry:
             self.conn.execute("ALTER TABLE devices ADD COLUMN vendor TEXT DEFAULT '—'")
         if "first_seen" not in cols:
             self.conn.execute("ALTER TABLE devices ADD COLUMN first_seen REAL DEFAULT 0")
+        if "alias" not in cols:
+            self.conn.execute("ALTER TABLE devices ADD COLUMN alias TEXT DEFAULT ''")
 
     def seen(self, mac: str, ip: str, hostname: str = "", vendor: str = "") -> None:
         """Marca un dispositivo como visto ahora (upsert sin pisar su estado)."""
@@ -71,6 +79,13 @@ class Registry:
     def set_status(self, mac: str, status: str) -> None:
         self.conn.execute(
             "UPDATE devices SET status=? WHERE mac=?", (status, mac)
+        )
+        self.conn.commit()
+
+    def set_alias(self, mac: str, alias: str) -> None:
+        """Pone (o borra, si alias='') el nombre personalizado del dispositivo."""
+        self.conn.execute(
+            "UPDATE devices SET alias=? WHERE mac=?", (alias.strip(), mac)
         )
         self.conn.commit()
 
