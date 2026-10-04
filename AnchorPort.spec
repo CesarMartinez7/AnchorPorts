@@ -54,4 +54,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon="assets/elisa.ico",   # carita de la mascota Elisa
 )
