@@ -149,8 +149,10 @@ class DNSMonitor(App):
         self.manager = None
         self.arp_error: str | None = None
         self.sniffer = DnsSniffer()
-        self.monitored: set[str] = set()
-        self._rows: set[str] = set()  # claves "ip|dominio" ya en la tabla
+        self.devices: set[str] = set()   # todos los dispositivos vistos en la red
+        self.monitored: set[str] = set()  # los que además estamos redirigiendo
+        self._rows: set[str] = set()  # claves de fila ya en la tabla
+        self._shown = 0               # nº de dispositivos mostrados ahora
         self._stop = threading.Event()
         self._forwarding_ok = False
 
@@ -194,20 +196,24 @@ class DNSMonitor(App):
     # ---- Datos en segundo plano -------------------------------------
     def _discover_loop(self, every: float = 15.0) -> None:
         while not self._stop.is_set():
-            try:
-                for ip, mac in scan_network(self.gateway_ip):
-                    if ip in (self.gateway_ip, self.local_ip):
-                        continue
-                    self.registry.seen(mac, ip)
-                    # Solo redirigir si el forwarding está confirmado: así
-                    # monitorear nunca corta la conexión del dispositivo.
-                    if (self._forwarding_ok and ip not in self.monitored
-                            and self.manager
-                            and self.manager.block(ip, mode="monitor")):
-                        self.monitored.add(ip)
-            except Exception:
-                pass
+            self._scan_once()
             self._stop.wait(every)
+
+    def _scan_once(self) -> None:
+        """Escanea la red: lista TODOS los dispositivos y redirige solo si hay
+        forwarding confirmado (si no, no envenena para no cortar la red)."""
+        try:
+            for ip, mac in scan_network(self.gateway_ip):
+                if ip in (self.gateway_ip, self.local_ip):
+                    continue
+                self.registry.seen(mac, ip)
+                self.devices.add(ip)  # siempre se lista, aunque no se redirija
+                if (self._forwarding_ok and ip not in self.monitored
+                        and self.manager
+                        and self.manager.block(ip, mode="monitor")):
+                    self.monitored.add(ip)
+        except Exception:
+            pass
 
     # ---- Render ------------------------------------------------------
     def _hostnames(self) -> dict[str, str]:
@@ -221,64 +227,56 @@ class DNSMonitor(App):
         try:
             table = self.query_one(DataTable)
             nombres = self._hostnames()
-            # Mostramos los redirigidos Y cualquier origen con DNS capturado,
-            # menos nuestro propio equipo y el router. Copias atómicas para no
-            # chocar con los hilos de descubrimiento y sniff.
-            ips = (self.monitored.copy() | set(self.sniffer.sources())) - {
-                self.local_ip, self.gateway_ip
-            }
+            # TODOS los dispositivos conocidos (registro persistente, igual que
+            # el panel) + los vistos en vivo + cualquier origen con DNS captado,
+            # menos nuestro equipo y el router. Así no se pierde el iPhone aunque
+            # un escaneo puntual no lo capte (duerme el WiFi).
+            ips = (set(nombres) | self.devices.copy()
+                   | set(self.sniffer.sources())) - {self.local_ip, self.gateway_ip}
+            self._shown = len(ips)
             for ip in sorted(ips):
                 etiqueta = nombres.get(ip, ip)
-                for dom, cnt, ts in self.sniffer.domains(ip):
-                    clave = f"{ip}|{dom}"
-                    last = _ago(ts)
-                    if clave in self._rows:
-                        table.update_cell(clave, "cnt", str(cnt))
-                        table.update_cell(clave, "last", last)
-                    else:
-                        table.add_row(etiqueta, dom, str(cnt), last, key=clave)
-                        self._rows.add(clave)
+                doms = self.sniffer.domains(ip)
+                ph = f"{ip}|\x00"  # fila placeholder "sin consultas"
+                if doms:
+                    if ph in self._rows:
+                        table.remove_row(ph)
+                        self._rows.discard(ph)
+                    for dom, cnt, ts in doms:
+                        clave = f"{ip}|{dom}"
+                        last = _ago(ts)
+                        if clave in self._rows:
+                            table.update_cell(clave, "cnt", str(cnt))
+                            table.update_cell(clave, "last", last)
+                        else:
+                            table.add_row(etiqueta, dom, str(cnt), last, key=clave)
+                            self._rows.add(clave)
+                elif ph not in self._rows:
+                    table.add_row(etiqueta, "— sin consultas aún —", "", "", key=ph)
+                    self._rows.add(ph)
         except Exception:
             pass
         self._update_status()
 
     def _update_status(self) -> None:
-        if not self._forwarding_ok:
-            resumen = (f"modo pasivo · {self.sniffer.total} consultas captadas "
-                       "(no se redirige para no cortar la red)")
-        elif not self.monitored:
+        if self._shown == 0:
             resumen = f"{SPINNER[int(time.time() * 10) % len(SPINNER)]} buscando dispositivos..."
         else:
-            resumen = (f"{len(self.monitored)} monitoreados · "
-                       f"{self.sniffer.total} consultas DNS capturadas")
+            modo = f"{len(self.monitored)} redirigidos" if self._forwarding_ok else "pasivo"
+            resumen = (f"{self._shown} dispositivos · {modo} · "
+                       f"{self.sniffer.total} consultas DNS")
         base = f"📡 {self.gateway_ip}    🖥 {self.local_ip}    {resumen}"
         if self.arp_error:
             base = f"⚠ ARP no disponible (Npcap/admin)    {base}"
         elif not self._forwarding_ok:
-            base = (f"⚠ IP forwarding no confirmado — monitoreo pasivo "
-                    f"(para ver DNS de otros equipos: Linux/root)    {base}")
+            base = (f"⚠ IP forwarding no confirmado — pasivo, no corta "
+                    f"(DNS de otros equipos: Linux/root)    {base}")
         self.query_one("#status", Static).update(base)
 
     # ---- Acciones ----------------------------------------------------
     def action_rescan(self) -> None:
-        if not self.manager:
-            self.notify("ARP no disponible (falta Npcap / admin).", severity="error")
-            return
         self.notify("Re-escaneando...")
         threading.Thread(target=self._scan_once, daemon=True).start()
-
-    def _scan_once(self) -> None:
-        try:
-            for ip, mac in scan_network(self.gateway_ip):
-                if ip in (self.gateway_ip, self.local_ip):
-                    continue
-                self.registry.seen(mac, ip)
-                if (self._forwarding_ok and ip not in self.monitored
-                        and self.manager
-                        and self.manager.block(ip, mode="monitor")):
-                    self.monitored.add(ip)
-        except Exception:
-            pass
 
     def action_quit(self) -> None:
         self._stop.set()
