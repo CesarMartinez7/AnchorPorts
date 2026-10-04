@@ -86,9 +86,14 @@ class DnsSniffer:
     def stop(self) -> None:
         self._stop.set()
 
+    def sources(self) -> list[str]:
+        """IPs de las que se ha capturado DNS (copia atómica del dict externo)."""
+        return list(dict(self.log).keys())
+
     def domains(self, ip: str) -> list[tuple[str, int, float]]:
         """[(dominio, veces, ultima_ts)] del dispositivo, más reciente primero."""
-        items = self.log.get(ip, {})
+        # Copia atómica: el hilo de sniff puede estar escribiendo este dict.
+        items = dict(self.log.get(ip, {}))
         orden = sorted(items.items(), key=lambda kv: kv[1][1], reverse=True)
         return [(dom, cnt, ts) for dom, (cnt, ts) in orden]
 
@@ -192,23 +197,36 @@ class DNSMonitor(App):
             self._stop.wait(every)
 
     # ---- Render ------------------------------------------------------
-    def _hostname(self, ip: str) -> str:
-        dev = next((d for d in self.registry.all() if d.ip == ip), None)
-        return dev.hostname if dev and dev.hostname else ip
+    def _hostnames(self) -> dict[str, str]:
+        """Mapa ip->hostname con UNA sola consulta (evita golpear la BD por ip)."""
+        try:
+            return {d.ip: (d.hostname or d.ip) for d in self.registry.all()}
+        except Exception:
+            return {}
 
     def _refresh(self) -> None:
-        table = self.query_one(DataTable)
-        for ip in sorted(self.monitored):
-            etiqueta = self._hostname(ip)
-            for dom, cnt, ts in self.sniffer.domains(ip):
-                clave = f"{ip}|{dom}"
-                last = _ago(ts)
-                if clave in self._rows:
-                    table.update_cell(clave, "cnt", str(cnt))
-                    table.update_cell(clave, "last", last)
-                else:
-                    table.add_row(etiqueta, dom, str(cnt), last, key=clave)
-                    self._rows.add(clave)
+        try:
+            table = self.query_one(DataTable)
+            nombres = self._hostnames()
+            # Mostramos los redirigidos Y cualquier origen con DNS capturado,
+            # menos nuestro propio equipo y el router. Copias atómicas para no
+            # chocar con los hilos de descubrimiento y sniff.
+            ips = (self.monitored.copy() | set(self.sniffer.sources())) - {
+                self.local_ip, self.gateway_ip
+            }
+            for ip in sorted(ips):
+                etiqueta = nombres.get(ip, ip)
+                for dom, cnt, ts in self.sniffer.domains(ip):
+                    clave = f"{ip}|{dom}"
+                    last = _ago(ts)
+                    if clave in self._rows:
+                        table.update_cell(clave, "cnt", str(cnt))
+                        table.update_cell(clave, "last", last)
+                    else:
+                        table.add_row(etiqueta, dom, str(cnt), last, key=clave)
+                        self._rows.add(clave)
+        except Exception:
+            pass
         self._update_status()
 
     def _update_status(self) -> None:
