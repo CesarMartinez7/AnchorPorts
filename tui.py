@@ -8,7 +8,7 @@ Tabla persistente que se actualiza sola. Todo por teclado:
   r          re-escanear ya
   q          salir (restaura toda la red)
 
-Muestra estados (🟢 permitido / 🔴 bloqueado / ⏳ con cuenta regresiva),
+Muestra estados ([+] permitido / [x] bloqueado / [~] con cuenta regresiva),
 no logs. Bloquear/monitorear requiere Npcap en Windows o root en Linux.
 """
 from __future__ import annotations
@@ -35,7 +35,7 @@ from net import (
 )
 from registry import Registry
 
-SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+SPINNER = "|/-\\"  # ASCII: se ve en cualquier terminal (cmd, powershell, bash)
 
 LEYENDA = (
     "[b]Teclas[/]\n"
@@ -48,9 +48,10 @@ LEYENDA = (
     "  r       re-escanear\n"
     "  q       salir\n\n"
     "[b]Estados[/]\n"
-    "  [green]🟢 permitido[/]\n"
-    "  [red]🔴 bloqueado[/]\n"
-    "  [yellow]⏳ temporizado[/]"
+    "  [green][+] permitido[/]\n"
+    "  [red][x] bloqueado[/]\n"
+    "  [yellow][~] temporizado[/]\n"
+    "  [cyan][o] monitoreando[/]"
 )
 
 
@@ -159,7 +160,7 @@ class DnsDetailScreen(Screen):
         vendor = (d.vendor if d and d.vendor else "—")
         host = self.hostname or "—"
         if self._monitoring:
-            modo = "[green]👁 monitoreando (tráfico redirigido, sin cortar)[/]"
+            modo = "[green][o] monitoreando (tráfico redirigido, sin cortar)[/]"
         else:
             modo = ("[yellow]modo pasivo — IP forwarding no confirmado, no se "
                     "redirige para no cortar la red (DNS de otros equipos solo "
@@ -382,15 +383,15 @@ class AnchorTUI(App):
         if ip in self._pending:
             return Text(f"{self._spinner()} {self._pending[ip]}...", style="bold yellow")
         if self.manager and self.manager.is_monitoring(ip):
-            return Text("👁 monitoreando", style="bold cyan")
+            return Text("[o] monitoreando", style="bold cyan")
         if self.manager and self.manager.is_blocked(ip):
             rem = self.manager.remaining(ip)
             if rem is not None:
-                return Text(f"⏳ bloqueado {_dur(rem)}", style="yellow")
-            return Text("🔴 bloqueado", style="bold red")
+                return Text(f"[~] bloqueado {_dur(rem)}", style="yellow")
+            return Text("[x] bloqueado", style="bold red")
         if ip in (self.gateway_ip, self.local_ip):
-            return Text("— tú / router", style="dim")
-        return Text("🟢 permitido", style="green")
+            return Text("- tu / router", style="dim")
+        return Text("[+] permitido", style="green")
 
     def _refresh_table(self) -> None:
         table = self.query_one("#main-table", DataTable)
@@ -420,9 +421,9 @@ class AnchorTUI(App):
             resumen = f"{self._spinner()} buscando dispositivos..."
         else:
             resumen = f"{total} dispositivos · {bloqueados} bloqueados"
-        base = f"📡 {self.gateway_ip}    🖥 {self.local_ip}    {resumen}"
+        base = f"gw {self.gateway_ip}    local {self.local_ip}    {resumen}"
         if self.arp_error:
-            base = f"⚠ ARP no disponible (Npcap/admin) — solo lectura    {base}"
+            base = f"! ARP no disponible (Npcap/admin) - solo lectura    {base}"
         self.query_one("#status", Static).update(base)
 
     # ---- Acciones de teclado ----------------------------------------

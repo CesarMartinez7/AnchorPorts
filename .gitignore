@@ -2,6 +2,7 @@ __pycache__
 *.db
 build/
 dist/
+dist_nuevo/
 *.manifest
 env
 .env

@@ -6,11 +6,16 @@ quién no" sobrevive entre ejecuciones.
 """
 from __future__ import annotations
 
+import os
 import sqlite3
 import time
 from dataclasses import dataclass
 
-DB_PATH = "anchorport.db"
+# BD en una ruta fija por usuario, para que la lista de dispositivos sea la
+# MISMA sin importar desde qué carpeta/terminal se ejecute (bash, cmd, .exe).
+_DIR = os.path.join(os.path.expanduser("~"), ".anchorport")
+os.makedirs(_DIR, exist_ok=True)
+DB_PATH = os.path.join(_DIR, "anchorport.db")
 
 
 @dataclass

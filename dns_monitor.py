@@ -31,7 +31,7 @@ from net import (
 )
 from registry import Registry
 
-SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+SPINNER = "|/-\\"  # ASCII: se ve en cualquier terminal (cmd, powershell, bash)
 
 LEYENDA_DNS = (
     "[b]Teclas[/]\n"
@@ -265,11 +265,11 @@ class DNSMonitor(App):
             modo = f"{len(self.monitored)} redirigidos" if self._forwarding_ok else "pasivo"
             resumen = (f"{self._shown} dispositivos · {modo} · "
                        f"{self.sniffer.total} consultas DNS")
-        base = f"📡 {self.gateway_ip}    🖥 {self.local_ip}    {resumen}"
+        base = f"gw {self.gateway_ip}    local {self.local_ip}    {resumen}"
         if self.arp_error:
-            base = f"⚠ ARP no disponible (Npcap/admin)    {base}"
+            base = f"! ARP no disponible (Npcap/admin)    {base}"
         elif not self._forwarding_ok:
-            base = (f"⚠ IP forwarding no confirmado — pasivo, no corta "
+            base = (f"! IP forwarding no confirmado - pasivo, no corta "
                     f"(DNS de otros equipos: Linux/root)    {base}")
         self.query_one("#status", Static).update(base)
 
