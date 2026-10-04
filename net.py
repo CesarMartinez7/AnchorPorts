@@ -123,18 +123,12 @@ def set_ip_forwarding(enable: bool) -> bool:
             )
             return True
         if sys.platform == "win32":
-            # Windows: requiere la clave de registro + servicio RemoteAccess.
-            subprocess.run(
-                ["reg", "add",
-                 r"HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters",
-                 "/v", "IPEnableRouter", "/t", "REG_DWORD",
-                 "/d", val, "/f"],
-                check=True, capture_output=True,
-            )
-            action = "start" if enable else "stop"
-            subprocess.run(["sc", action, "RemoteAccess"],
-                           capture_output=True, check=False)
-            return True
+            # En Windows NO tocamos IPEnableRouter ni RemoteAccess: el forwarding
+            # casi nunca surte efecto en la sesión (necesita reinicio) y, si
+            # queda activo, deja el PC en "modo router" y le rompe el internet.
+            # El monitoreo/límite ya van en pasivo en Windows (ip_forwarding_
+            # enabled() devuelve None), así que esto solo evitaría daños.
+            return False
     except Exception:
         return False
     return False
