@@ -1,8 +1,8 @@
 """Registro persistente de dispositivos de la red (SQLite).
 
-Guarda quién se ha visto, su estado (permitido/bloqueado) y la última vez que
-apareció. Así la tabla de "quién puede conectarse y quién no" sobrevive entre
-ejecuciones.
+Guarda quién se ha visto, su fabricante, su estado (permitido/bloqueado) y la
+primera/última vez que apareció. Así la tabla de "quién puede conectarse y
+quién no" sobrevive entre ejecuciones.
 """
 from __future__ import annotations
 
@@ -20,6 +20,8 @@ class Device:
     hostname: str
     status: str  # "allowed" | "blocked"
     last_seen: float
+    vendor: str = "—"
+    first_seen: float = 0.0
 
 
 class Registry:
@@ -28,26 +30,41 @@ class Registry:
         self.conn.row_factory = sqlite3.Row
         self.conn.execute(
             """CREATE TABLE IF NOT EXISTS devices (
-                mac       TEXT PRIMARY KEY,
-                ip        TEXT,
-                hostname  TEXT,
-                status    TEXT DEFAULT 'allowed',
-                last_seen REAL
+                mac        TEXT PRIMARY KEY,
+                ip         TEXT,
+                hostname   TEXT,
+                status     TEXT DEFAULT 'allowed',
+                last_seen  REAL,
+                vendor     TEXT DEFAULT '—',
+                first_seen REAL DEFAULT 0
             )"""
         )
+        self._migrate()
         self.conn.commit()
 
-    def seen(self, mac: str, ip: str, hostname: str = "") -> None:
+    def _migrate(self) -> None:
+        """Añade columnas nuevas a BDs creadas con versiones anteriores."""
+        cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(devices)")}
+        if "vendor" not in cols:
+            self.conn.execute("ALTER TABLE devices ADD COLUMN vendor TEXT DEFAULT '—'")
+        if "first_seen" not in cols:
+            self.conn.execute("ALTER TABLE devices ADD COLUMN first_seen REAL DEFAULT 0")
+
+    def seen(self, mac: str, ip: str, hostname: str = "", vendor: str = "") -> None:
         """Marca un dispositivo como visto ahora (upsert sin pisar su estado)."""
+        now = time.time()
         self.conn.execute(
-            """INSERT INTO devices (mac, ip, hostname, status, last_seen)
-               VALUES (?, ?, ?, 'allowed', ?)
+            """INSERT INTO devices (mac, ip, hostname, status, last_seen,
+                                    vendor, first_seen)
+               VALUES (?, ?, ?, 'allowed', ?, ?, ?)
                ON CONFLICT(mac) DO UPDATE SET
                  ip=excluded.ip,
                  hostname=CASE WHEN excluded.hostname != ''
                                THEN excluded.hostname ELSE devices.hostname END,
+                 vendor=CASE WHEN excluded.vendor != '' AND excluded.vendor != '—'
+                             THEN excluded.vendor ELSE devices.vendor END,
                  last_seen=excluded.last_seen""",
-            (mac, ip, hostname, time.time()),
+            (mac, ip, hostname, now, vendor or "—", now),
         )
         self.conn.commit()
 

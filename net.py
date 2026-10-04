@@ -6,11 +6,21 @@ no añadir nada nuevo.
 """
 from __future__ import annotations
 
+import logging
 import socket
 import subprocess
 import sys
+import warnings
+
+# Silenciar scapy ANTES de importarlo: evita que su "WARNING: No libpcap..."
+# y los resúmenes de paquetes se cuelen por encima del panel y lo descuadren.
+logging.getLogger("scapy").setLevel(logging.CRITICAL)
+logging.getLogger("scapy.runtime").setLevel(logging.CRITICAL)
+warnings.filterwarnings("ignore")
 
 from scapy.all import ARP, Ether, conf, get_if_hwaddr, srp
+
+conf.verb = 0  # nada de salida por defecto al enviar/recibir
 
 
 def get_local_ip() -> str:
@@ -58,6 +68,26 @@ def scan_network(gateway_ip: str, timeout: float = 2.0) -> list[tuple[str, str]]
         timeout=timeout, verbose=0,
     )
     return [(rcv.psrc, rcv.hwsrc) for _snt, rcv in ans]
+
+
+def get_vendor(mac: str | None) -> str:
+    """Fabricante del dispositivo a partir del OUI de su MAC."""
+    if not mac:
+        return "—"
+    try:
+        v = conf.manufdb._get_manuf(mac)
+        # Si no lo conoce, scapy devuelve la propia MAC: lo tratamos como desconocido.
+        return "—" if not v or v.lower() == mac.lower() else v
+    except Exception:
+        return "—"
+
+
+def reverse_dns(ip: str) -> str:
+    """Nombre del host por DNS inverso; '' si no resuelve."""
+    try:
+        return socket.gethostbyaddr(ip)[0]
+    except Exception:
+        return ""
 
 
 def get_own_mac() -> str:
