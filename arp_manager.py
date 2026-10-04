@@ -25,6 +25,7 @@ class Target:
     stop: threading.Event = field(default_factory=threading.Event)
     thread: threading.Thread | None = None
     expires_at: float | None = None  # epoch; None = indefinido
+    mode: str = "block"  # "block" (corta) | "monitor" (redirige, no corta)
 
 
 class BlockManager:
@@ -43,11 +44,16 @@ class BlockManager:
             )
 
     # ---- API pública -------------------------------------------------
-    def block(self, ip: str, duration: float | None = None) -> bool:
-        """Empieza a bloquear una IP. Devuelve False si ya estaba o sin MAC.
+    def block(self, ip: str, duration: float | None = None,
+              mode: str = "block") -> bool:
+        """Empieza a envenenar una IP. Devuelve False si ya estaba o sin MAC.
 
-        Si `duration` (segundos) se indica, el bloqueo expira solo; usa
-        `expired()` desde el bucle de refresco para desbloquear los vencidos.
+        mode="block" corta el tráfico (sin IP forwarding); mode="monitor"
+        redirige el tráfico por nosotros para inspeccionarlo (requiere IP
+        forwarding activo en el SO, si no, también lo cortaría).
+
+        Si `duration` (segundos) se indica, expira solo; usa `expired()` desde
+        el bucle de refresco para desbloquear los vencidos.
         """
         with self._lock:
             if ip in self._targets:
@@ -55,7 +61,7 @@ class BlockManager:
             mac = get_mac(ip)
             if not mac:
                 return False
-            target = Target(ip=ip, mac=mac)
+            target = Target(ip=ip, mac=mac, mode=mode)
             if duration:
                 target.expires_at = time.time() + duration
             target.thread = threading.Thread(
@@ -82,10 +88,20 @@ class BlockManager:
             self.unblock(ip)
 
     def blocked_ips(self) -> list[str]:
+        """Solo las IPs realmente bloqueadas (no las que están en monitoreo)."""
         with self._lock:
-            return list(self._targets.keys())
+            return [ip for ip, t in self._targets.items() if t.mode == "block"]
 
     def is_blocked(self, ip: str) -> bool:
+        t = self._targets.get(ip)
+        return t is not None and t.mode == "block"
+
+    def is_monitoring(self, ip: str) -> bool:
+        t = self._targets.get(ip)
+        return t is not None and t.mode == "monitor"
+
+    def is_active(self, ip: str) -> bool:
+        """¿Hay envenenamiento activo (bloqueo o monitoreo) sobre esta IP?"""
         return ip in self._targets
 
     def remaining(self, ip: str) -> float | None:

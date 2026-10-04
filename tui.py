@@ -131,8 +131,15 @@ class DnsDetailScreen(Screen):
         mac = d.mac if d else "—"
         vendor = (d.vendor if d and d.vendor else "—")
         host = self.hostname or "—"
+        if getattr(self, "_monitoring", False):
+            modo = "[green]👁 monitoreando (tráfico redirigido)[/]"
+        else:
+            modo = ("[yellow]modo pasivo[/] — sin IP forwarding no se redirige "
+                    "el tráfico; en redes conmutadas puede que no veas DNS de "
+                    "este equipo (en Windows requiere admin + RemoteAccess; "
+                    "en Linux, root)")
         return (
-            f"[b cyan]{host}[/]  ·  [b]{self.ip}[/]\n"
+            f"[b cyan]{host}[/]  ·  [b]{self.ip}[/]    {modo}\n"
             f"MAC: {mac}   Fabricante: {vendor}\n"
             f"Puertos/SO: {self._ports_info}\n"
             "[dim]Dominios que consulta este dispositivo (DNS en vivo). "
@@ -140,16 +147,22 @@ class DnsDetailScreen(Screen):
         )
 
     def on_mount(self) -> None:
-        self.query_one("#detalle-info", Static).update(self._info_markup())
         table = self.query_one(DataTable)
         table.add_column("Dominio", key="dom", width=44)
         table.add_column("Veces", key="cnt", width=7)
         table.add_column("Última", key="last", width=8)
         self._seen: set[str] = set()
+        self._monitoring = False  # ¿llegamos a redirigir este dispositivo?
 
+        # Solo redirigimos si el IP forwarding se activó de verdad. Si no,
+        # envenenar cortaría la conexión (no veríamos nada), así que nos
+        # quedamos en modo pasivo y lo avisamos.
         self._forwarding_ok = set_ip_forwarding(True)
-        if self.manager and not self.manager.is_blocked(self.ip):
-            self.manager.block(self.ip)  # con forwarding ON = redirigir
+        if self._forwarding_ok and self.manager and not self.manager.is_active(self.ip):
+            self.manager.block(self.ip, mode="monitor")  # redirige, no corta
+            self._monitoring = True
+
+        self.query_one("#detalle-info", Static).update(self._info_markup())
         self.sniffer.start()
         threading.Thread(target=self._scan_ports, daemon=True).start()
         self.set_interval(1.0, self._refresh)
@@ -187,8 +200,8 @@ class DnsDetailScreen(Screen):
 
     def action_cerrar(self) -> None:
         self.sniffer.stop()
-        # Dejamos de redirigir este dispositivo y restauramos.
-        if self.manager and self.manager.is_blocked(self.ip):
+        # Solo deshacemos lo que hicimos: si estábamos redirigiendo, paramos.
+        if self._monitoring and self.manager and self.manager.is_monitoring(self.ip):
             self.manager.unblock(self.ip)
         if self._forwarding_ok:
             set_ip_forwarding(False)
@@ -319,6 +332,8 @@ class AnchorTUI(App):
         # Estado transitorio (cargando) tiene prioridad visual.
         if ip in self._pending:
             return Text(f"{self._spinner()} {self._pending[ip]}...", style="bold yellow")
+        if self.manager and self.manager.is_monitoring(ip):
+            return Text("👁 monitoreando", style="bold cyan")
         if self.manager and self.manager.is_blocked(ip):
             rem = self.manager.remaining(ip)
             if rem is not None:

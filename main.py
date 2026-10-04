@@ -4,20 +4,20 @@ from time import sleep
 
 import nmap
 from colorama import Fore
-from rich.align import Align
-from rich.columns import Columns
 from rich.console import Console
-from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
+from textual.app import App, ComposeResult
+from textual.containers import Horizontal
+from textual.widgets import Footer, Header, OptionList, Static
+from textual.widgets.option_list import Option
 
 from fonts import f
 from get_host import _ip_default
-from logo import ELISA_ASCII, ELISA_COLOR
+from logo import ELISA_ASCII
 from net import get_gateway_ip, get_local_ip
 
 machine: str = sys.platform.title()
-SALMON = ELISA_COLOR  # #d9766a, el color de la mascota
 
 OPCIONES = [
     ("1", "Panel interactivo",
@@ -86,67 +86,81 @@ def escaneo_detallado() -> None:
         sleep(0.8)
 
 
-def render_inicio(console) -> None:
-    """Dibuja la pantalla de inicio: banner, logo y menú de opciones."""
-    clear_console()
+class MenuApp(App):
+    """Menú de inicio interactivo: navega con j/k o flechas, Enter/número elige."""
 
-    banner = Text(f.renderText("Anchor Port"), style=f"bold {SALMON}")
-    console.print(Align.center(banner))
+    TITLE = "AnchorPort"
+    SUB_TITLE = "elige una acción — todo automático, sin escribir IPs"
 
-    logo = Text(ELISA_ASCII, style=SALMON, justify="center")
+    CSS = """
+    Screen { align: center middle; }
+    #banner { color: #d9766a; height: auto; content-align: center top;
+              margin-bottom: 1; }
+    #fila { height: auto; align: center middle; }
+    #logo { color: #d9766a; width: auto; height: auto; margin-right: 4; }
+    #menu {
+        width: 58; height: auto;
+        border: round #d9766a; padding: 1 1;
+        border-title-color: #d9766a; border-title-align: center;
+    }
+    #menu > .option-list--option { padding: 0 1; }
+    #menu > .option-list--option-highlighted {
+        background: #d9766a; color: $text; text-style: bold;
+    }
+    #info { color: $text-muted; height: auto; content-align: center top;
+            margin-top: 1; }
+    """
 
-    opciones = Table.grid(padding=(0, 2))
-    opciones.add_column(justify="center")
-    opciones.add_column(justify="left")
-    for key, nombre, desc in OPCIONES:
-        opciones.add_row(
-            Text(f" {key} ", style=f"bold white on {SALMON}"),
-            Text.assemble((nombre + "\n", "bold"), (desc, "dim")),
-        )
-    panel = Panel(
-        opciones,
-        title="[bold]¿Qué quieres hacer?[/]",
-        subtitle="[dim]todo automático · sin escribir IPs[/]",
-        border_style=SALMON,
-        padding=(1, 2),
-    )
+    BINDINGS = [
+        ("j,down", "mover(1)", "Bajar"),
+        ("k,up", "mover(-1)", "Subir"),
+        ("1", "elegir('1')", ""),
+        ("2", "elegir('2')", ""),
+        ("3", "elegir('3')", ""),
+        ("0,q", "elegir('0')", "Salir"),
+    ]
 
-    console.print(Columns([logo, panel], padding=(0, 4), align="center"))
-    console.print(
-        Align.center(
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=True)
+        yield Static(Text(f.renderText("Anchor Port"), style="bold #d9766a"),
+                     id="banner")
+        with Horizontal(id="fila"):
+            yield Static(Text(ELISA_ASCII, style="#d9766a"), id="logo")
+            menu = OptionList(id="menu")
+            for key, nombre, desc in OPCIONES:
+                etiqueta = Text.assemble(
+                    (f" {key}  ", "bold"), (nombre, "bold"),
+                    ("\n     " + desc, "dim"),
+                )
+                menu.add_option(Option(etiqueta, id=key))
+            yield menu
+        yield Static(
             Text.assemble(
-                ("SO ", "dim"), (f"{machine}", "bold"),
-                ("    IP ", "dim"), (f"{_ip_default}", SALMON),
-                ("    gateway ", "dim"), (get_gateway_ip(), SALMON),
-            )
+                ("SO ", "dim"), (machine, "bold"),
+                ("    IP ", "dim"), (_ip_default, "#d9766a"),
+                ("    gateway ", "dim"), (get_gateway_ip(), "#d9766a"),
+            ),
+            id="info",
         )
-    )
+        yield Footer()
 
+    def on_mount(self) -> None:
+        menu = self.query_one(OptionList)
+        menu.border_title = "¿Qué quieres hacer?"
+        menu.focus()
 
-def main(console) -> None:
-    render_inicio(console)
-    try:
-        entrada = console.input(
-            f"\n  [bold {SALMON}]>[/] Elige una opción [dim](0-3)[/]: "
-        ).strip()
-        opcion = int(entrada)
-    except ValueError:
-        return
+    def action_mover(self, paso: int) -> None:
+        menu = self.query_one(OptionList)
+        if paso > 0:
+            menu.action_cursor_down()
+        else:
+            menu.action_cursor_up()
 
-    match opcion:
-        case 1:
-            from tui import AnchorTUI
-            AnchorTUI().run()
-        case 2:
-            try:
-                from dns_monitor import DNSMonitor
-                DNSMonitor().run()
-            except RuntimeError as e:
-                _aviso_arp(console, e)
-        case 3:
-            escaneo_detallado()
-        case 0:
-            sys.exit()
+    def action_elegir(self, key: str) -> None:
+        self.exit(key)
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        self.exit(event.option.id)
 
 
 def _aviso_arp(console, error) -> None:
@@ -162,10 +176,27 @@ def _aviso_arp(console, error) -> None:
     input("Enter para volver al menú...")
 
 
-if __name__ == "__main__":
+def main() -> None:
     console = Console()
     while True:
         try:
-            main(console=console)
+            opcion = MenuApp().run()
         except KeyboardInterrupt:
-            sys.exit()
+            break
+        if not opcion or opcion == "0":
+            break
+        if opcion == "1":
+            from tui import AnchorTUI
+            AnchorTUI().run()
+        elif opcion == "2":
+            try:
+                from dns_monitor import DNSMonitor
+                DNSMonitor().run()
+            except RuntimeError as e:
+                _aviso_arp(console, e)
+        elif opcion == "3":
+            escaneo_detallado()
+
+
+if __name__ == "__main__":
+    main()
