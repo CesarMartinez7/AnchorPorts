@@ -22,6 +22,7 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen, Screen
 from textual.widgets import DataTable, Footer, Header, Input, Label, Static
 
+from arp_manager import BLACKHOLE_MAC
 from dns_monitor import DnsSniffer
 from logo import logo_markup
 from net import (
@@ -47,6 +48,7 @@ LEYENDA = (
     "  l       limitar MB\n"
     "  d       detalle DNS\n"
     "  n       renombrar\n"
+    "  Supr    olvidar\n"
     "  r       re-escanear\n"
     "  q       salir\n\n"
     "[b]Estados[/]\n"
@@ -66,6 +68,17 @@ def _ago(ts: float) -> str:
     if d < 3600:
         return f"{d // 60}m"
     return f"{d // 3600}h"
+
+
+def _mac_bogus(mac: str | None) -> bool:
+    """MAC no registrable: vacía, todo ceros, o la MAC agujero negro del bloqueo."""
+    if not mac:
+        return True
+    m = mac.lower()
+    return m in (BLACKHOLE_MAC.lower(), "00:00:00:00:00:00", "ff:ff:ff:ff:ff:ff")
+
+
+OFFLINE_SEG = 120  # sin verse más de esto => se considera desconectado
 
 
 def _dur(seg: float) -> str:
@@ -336,6 +349,7 @@ class AnchorTUI(App):
         ("l", "limit", "Limitar MB"),
         ("d,enter", "details", "Detalle DNS"),
         ("n", "rename", "Renombrar"),
+        ("delete,backspace", "forget", "Olvidar"),
         ("r", "scan", "Re-escanear"),
         ("q", "quit", "Salir"),
     ]
@@ -396,6 +410,8 @@ class AnchorTUI(App):
             if not self._scan_paused.is_set():
                 try:
                     for ip, mac in scan_network(self.gateway_ip):
+                        if _mac_bogus(mac):
+                            continue  # no registrar la MAC agujero negro, etc.
                         self.registry.seen(mac, ip, reverse_dns(ip), get_vendor(mac))
                 except Exception:
                     pass
@@ -439,9 +455,25 @@ class AnchorTUI(App):
 
     def _refresh_table(self) -> None:
         table = self.query_one("#main-table", DataTable)
-        for dev in self.registry.all():
+        devices = self.registry.all()
+        vivos = {d.ip for d in devices}
+        # Quita de la tabla los que ya no están en el registro (olvidados/podados).
+        for ip in list(self._rows):
+            if ip not in vivos:
+                try:
+                    table.remove_row(ip)
+                except Exception:
+                    pass
+                self._rows.discard(ip)
+
+        for dev in devices:
             estado = self._estado(dev.ip)
-            visto = _ago(dev.last_seen)
+            activo = self.manager and self.manager.is_active(dev.ip)
+            edad = time.time() - dev.last_seen
+            # Visto: rojo si lleva rato sin verse y no lo estamos envenenando
+            # (probablemente desconectado); si no, atenuado normal.
+            offline = edad > OFFLINE_SEG and not activo
+            visto = Text(_ago(dev.last_seen), style="red" if offline else "dim")
             # Nombre a mostrar: alias (si se renombró) resaltado, si no hostname.
             if dev.alias:
                 host = Text(dev.alias, style="bold")
@@ -660,6 +692,24 @@ class AnchorTUI(App):
                         else f"Nombre de {ip} borrado")
 
         self.push_screen(RenameScreen(ip, dev.alias), _done)
+
+    def action_forget(self) -> None:
+        ip = self._selected_ip()
+        if not ip:
+            return
+        dev = next((d for d in self.registry.all() if d.ip == ip), None)
+        if not dev:
+            return
+        # Si lo estábamos envenenando, restaura antes de olvidarlo.
+        if self.manager and self.manager.is_active(ip):
+            self.manager.unblock(ip)
+        self.registry.forget(dev.mac)
+        try:
+            self.query_one("#main-table", DataTable).remove_row(ip)
+        except Exception:
+            pass
+        self._rows.discard(ip)
+        self.notify(f"Olvidado {ip}")
 
     def action_details(self) -> None:
         ip = self._selected_ip()

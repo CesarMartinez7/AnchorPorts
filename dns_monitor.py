@@ -21,6 +21,7 @@ from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import DataTable, Footer, Header, Static
 
+from arp_manager import BLACKHOLE_MAC
 from logo import ELISA_ASCII
 from net import (
     get_gateway_ip,
@@ -206,6 +207,8 @@ class DNSMonitor(App):
             for ip, mac in scan_network(self.gateway_ip):
                 if ip in (self.gateway_ip, self.local_ip):
                     continue
+                if not mac or mac.lower() == BLACKHOLE_MAC.lower():
+                    continue  # no registrar la MAC agujero negro del bloqueo
                 self.registry.seen(mac, ip)
                 self.devices.add(ip)  # siempre se lista, aunque no se redirija
                 if (self._forwarding_ok and ip not in self.monitored

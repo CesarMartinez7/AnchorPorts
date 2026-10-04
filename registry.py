@@ -94,6 +94,20 @@ class Registry:
         )
         self.conn.commit()
 
+    def forget(self, mac: str) -> None:
+        """Elimina un dispositivo del registro (p. ej. uno viejo/erróneo)."""
+        self.conn.execute("DELETE FROM devices WHERE mac=?", (mac,))
+        self.conn.commit()
+
+    def prune(self, max_age_seconds: float) -> int:
+        """Borra los dispositivos no vistos desde hace más de `max_age_seconds`."""
+        limite = time.time() - max_age_seconds
+        cur = self.conn.execute(
+            "DELETE FROM devices WHERE last_seen < ?", (limite,)
+        )
+        self.conn.commit()
+        return cur.rowcount
+
     def all(self) -> list[Device]:
         rows = self.conn.execute(
             "SELECT * FROM devices ORDER BY last_seen DESC"
