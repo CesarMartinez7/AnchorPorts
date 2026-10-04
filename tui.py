@@ -196,16 +196,42 @@ class DnsDetailScreen(Screen):
 
 
 class AnchorTUI(App):
+    TITLE = "AnchorPort"
+    SUB_TITLE = "control de red · teclado"
+
     CSS = """
-    #status { height: 1; color: $text-muted; padding: 0 1; }
-    #cuerpo { height: 1fr; }
-    #main-table { width: 1fr; }
-    #sidebar { width: 34; padding: 0 1; }
-    #logo { color: #d9766a; height: auto; }
-    #legend { height: auto; margin-top: 1; }
+    Screen { background: $surface; }
+
+    #status {
+        height: 1; padding: 0 2;
+        background: #d9766a; color: $text; text-style: bold;
+    }
+
+    #cuerpo { height: 1fr; padding: 1 1 0 1; }
+
+    #main-table {
+        width: 1fr; height: 1fr;
+        border: round #d9766a; padding: 0 1;
+        border-title-color: #d9766a; border-title-align: center;
+        border-subtitle-color: $text-muted; border-subtitle-align: right;
+    }
+    #main-table > .datatable--header {
+        background: #d9766a; color: $text; text-style: bold;
+    }
+    #main-table > .datatable--cursor { background: #d9766a 45%; text-style: bold; }
+    #main-table > .datatable--hover { background: #d9766a 20%; }
+
+    #sidebar {
+        width: 36; height: 1fr; margin-left: 1;
+        border: round #d9766a; padding: 1 1;
+        border-title-color: #d9766a; border-title-align: center;
+    }
+    #logo { color: #d9766a; height: auto; content-align: center top; }
+    #legend { height: auto; margin-top: 1; color: $text-muted; }
+
     #modal {
         width: 50; height: auto; padding: 1 2;
-        border: round $accent; background: $panel;
+        border: round #d9766a; background: $panel;
     }
     #modal Label { margin-bottom: 1; }
     """
@@ -245,6 +271,8 @@ class AnchorTUI(App):
 
     def on_mount(self) -> None:
         table = self.query_one("#main-table", DataTable)
+        table.border_title = "Dispositivos en la red"
+        table.border_subtitle = "j/k mover · espacio bloquear · d detalle"
         table.add_column("IP", key="ip", width=16)
         table.add_column("Hostname", key="host", width=20)
         table.add_column("Fabricante", key="vendor", width=18)
@@ -252,6 +280,7 @@ class AnchorTUI(App):
         table.add_column("Estado", key="estado", width=22)
         table.add_column("Visto", key="visto", width=7)
         table.focus()
+        self.query_one("#sidebar", Vertical).border_title = "AnchorPort"
 
         # BlockManager puede fallar sin Npcap/root: no reventar.
         try:
@@ -319,11 +348,13 @@ class AnchorTUI(App):
     def _update_status(self) -> None:
         bloqueados = len(self.manager.blocked_ips()) if self.manager else 0
         total = len(self._rows)
-        base = (f"Gateway {self.gateway_ip} · Local {self.local_ip} · "
-                f"{total} dispositivos · {bloqueados} bloqueados")
+        if total == 0:
+            resumen = f"{self._spinner()} buscando dispositivos..."
+        else:
+            resumen = f"{total} dispositivos · {bloqueados} bloqueados"
+        base = f"📡 {self.gateway_ip}    🖥 {self.local_ip}    {resumen}"
         if self.arp_error:
-            base = (f"[b red]ARP no disponible[/] (instala Npcap / corre como "
-                    f"admin) — solo lectura · {base}")
+            base = f"⚠ ARP no disponible (Npcap/admin) — solo lectura    {base}"
         self.query_one("#status", Static).update(base)
 
     # ---- Acciones de teclado ----------------------------------------
