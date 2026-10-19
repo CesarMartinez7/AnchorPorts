@@ -1,6 +1,6 @@
-# Anchor Port
+# Onitsuka
 
-Anchor Port es una herramienta para **administrar tu propia red local**: ver qué
+Onitsuka es una herramienta para **administrar tu propia red local**: ver qué
 dispositivos están conectados, bloquearlos/expulsarlos y monitorear a qué
 dominios acceden. Usa `python-nmap` para escanear y `scapy` para el control por
 ARP. Todo es automático desde tablas: **no hay que escribir direcciones IP a mano.**
@@ -14,7 +14,6 @@ ARP. Todo es automático desde tablas: **no hay que escribir direcciones IP a ma
    número de uno para bloquearlo/expulsarlo o desbloquearlo.
 2. **Monitorear dominios (DNS)** — descubre toda la red sola y muestra a qué
    dominios accede cada dispositivo.
-3. **Escaneo detallado** — puertos y sistema operativo de cada dispositivo.
 0. Salir (restaura las tablas ARP de la red).
 
 ## Requisitos
@@ -51,14 +50,14 @@ pip install pyinstaller
 pyinstaller AnchorPort.spec
 ```
 
-Queda en `dist/AnchorPort.exe` (Windows) o `dist/AnchorPort` (Linux). Se ejecuta
+Queda en `dist/Onitsuka.exe` (Windows) o `dist/Onitsuka` (Linux). Se ejecuta
 como **Administrador/root**.
 
 **Importante — dependencias externas que NO van dentro del ejecutable:**
 
 - **Npcap** (Windows) o permisos **root** (Linux): obligatorio para enviar/recibir
   ARP y capturar DNS. El `.exe` lo necesita instalado en la máquina destino.
-- **nmap**: solo para el "Escaneo detallado" (opción 3) y los puertos/SO del
-  detalle. Si no está instalado, el resto funciona igual.
+- **nmap**: opcional; se usa para mostrar puertos y sistema operativo en el
+  detalle de un dispositivo. Si no está instalado, el resto funciona igual.
 - **IP forwarding real** (root/Linux) para capturar DNS de otros equipos sin
   cortarles la red.

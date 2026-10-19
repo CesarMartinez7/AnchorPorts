@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================
-REM  AnchorPort - Reparar red (revierte IP forwarding y limpia)
+REM  Onitsuka - Reparar red (revierte IP forwarding y limpia)
 REM  Doble clic. Se auto-eleva a Administrador.
 REM ============================================================
 

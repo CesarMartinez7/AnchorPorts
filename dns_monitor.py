@@ -22,7 +22,7 @@ from textual.containers import Horizontal, Vertical
 from textual.widgets import DataTable, Footer, Header, Static
 
 from arp_manager import BLACKHOLE_MAC
-from logo import ELISA_ASCII
+from logo import logo_markup
 from net import (
     get_gateway_ip,
     get_local_ip,
@@ -106,35 +106,38 @@ class DnsSniffer:
 
 
 class DNSMonitor(App):
-    """Monitor de dominios DNS de toda la red (tema salmón, estilo panel)."""
+    """Monitor de dominios DNS de toda la red, con el tema de Onitsuka."""
 
-    TITLE = "AnchorPort — Monitor DNS"
+    TITLE = "Onitsuka — Monitor DNS"
     SUB_TITLE = "a qué dominios accede cada dispositivo"
 
     CSS = """
-    Screen { background: $surface; }
+    Screen { background: #101820; color: #e6eee9; }
+    Header { background: #18252e; color: #72dda0; }
+    Footer { background: #18252e; color: #e6eee9; }
     #status {
-        height: 1; padding: 0 2;
-        background: #d9766a; color: $text; text-style: bold;
+        height: 3; padding: 0 2;
+        background: #18252e; color: #e6eee9;
+        border-bottom: solid #72dda0;
     }
     #cuerpo { height: 1fr; padding: 1 1 0 1; }
     #dns-table {
         width: 1fr; height: 1fr;
-        border: round #d9766a; padding: 0 1;
-        border-title-color: #d9766a; border-title-align: center;
-        border-subtitle-color: $text-muted; border-subtitle-align: right;
+        border: round #3e5b4a; background: #18252e; color: #e6eee9; padding: 0 1;
+        border-title-color: #72dda0; border-title-align: left;
+        border-subtitle-color: #a4b5aa; border-subtitle-align: right;
     }
     #dns-table > .datatable--header {
-        background: #d9766a; color: $text; text-style: bold;
+        background: #72dda0; color: #101820; text-style: bold;
     }
-    #dns-table > .datatable--cursor { background: #d9766a 45%; text-style: bold; }
+    #dns-table > .datatable--cursor { background: #294238; color: #e6eee9; text-style: bold; }
     #sidebar {
         width: 34; height: 1fr; margin-left: 1;
-        border: round #d9766a; padding: 1 1;
-        border-title-color: #d9766a; border-title-align: center;
+        border: round #3e5b4a; background: #18252e; padding: 1 1;
+        border-title-color: #72dda0; border-title-align: left;
     }
-    #logo { color: #d9766a; height: auto; content-align: center top; }
-    #legend { height: auto; margin-top: 1; color: $text-muted; }
+    #logo { color: #72dda0; height: auto; content-align: center top; }
+    #legend { height: auto; margin-top: 1; color: #c1cdc5; }
     """
 
     BINDINGS = [
@@ -164,13 +167,13 @@ class DNSMonitor(App):
         with Horizontal(id="cuerpo"):
             yield DataTable(id="dns-table", cursor_type="row", zebra_stripes=True)
             with Vertical(id="sidebar"):
-                yield Static(Text(ELISA_ASCII, style="#d9766a"), id="logo")
+                yield Static(logo_markup(), id="logo")
                 yield Static(LEYENDA_DNS, id="legend")
         yield Footer()
 
     def on_mount(self) -> None:
         table = self.query_one(DataTable)
-        table.border_title = "Dominios por dispositivo (DNS)"
+        table.border_title = "ACTIVIDAD DNS EN VIVO"
         table.border_subtitle = "r re-escanear · q salir"
         table.add_column("Dispositivo", key="dev", width=24)
         table.add_column("Dominio", key="dom", width=42)
@@ -266,15 +269,22 @@ class DNSMonitor(App):
             resumen = f"{SPINNER[int(time.time() * 10) % len(SPINNER)]} buscando dispositivos..."
         else:
             modo = f"{len(self.monitored)} redirigidos" if self._forwarding_ok else "pasivo"
-            resumen = (f"{self._shown} dispositivos · {modo} · "
+            resumen = (f"{self._shown} dispositivos    ·    {modo}    ·    "
                        f"{self.sniffer.total} consultas DNS")
-        base = f"gw {self.gateway_ip}    local {self.local_ip}    {resumen}"
+        status = Text.assemble(
+            (">  ONITSUKA", "bold #72dda0"),
+            ("   MONITOR DNS", "dim"),
+            ("\n  ROUTER  ", "bold #72dda0"), (self.gateway_ip, "bold"),
+            ("     EQUIPO  ", "bold #72dda0"), (self.local_ip, "bold"),
+            ("     ", ""), (resumen, "bold"),
+        )
         if self.arp_error:
-            base = f"! ARP no disponible (Npcap/admin)    {base}"
+            status.append("\n  ! ARP no disponible (Npcap/admin)",
+                          style="bold #a85c00")
         elif not self._forwarding_ok:
-            base = (f"! IP forwarding no confirmado - pasivo, no corta "
-                    f"(DNS de otros equipos: Linux/root)    {base}")
-        self.query_one("#status", Static).update(base)
+            status.append("\n  ! Modo pasivo: IP forwarding no confirmado; no se redirige tráfico",
+                          style="bold #a85c00")
+        self.query_one("#status", Static).update(status)
 
     # ---- Acciones ----------------------------------------------------
     def action_rescan(self) -> None:

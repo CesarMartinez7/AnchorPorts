@@ -1,31 +1,24 @@
-"""Logo ASCII de la mascota Elisa (derivado de elisa-states.jpeg).
+"""Identidad visual de Onitsuka para las interfaces de terminal."""
 
-Generado convirtiendo una de las caritas a arte ASCII por brillo. Se muestra
-en el panel interactivo con el color salmón de la mascota.
-"""
-
-ELISA_ASCII = r"""
-        :--=========-:.
-      -============-----:
-    -================---==.
-   ========================.
-  -======- .=====-  ========
- .+======:  -====.  -=======-
- :+======-  -====-  ========-
- .+==----===+****+===--:-===-
-  ====-=====++--++==========
-   ==========+=============.
-    -====================-
-      -================-.
-        .--=========-:
+ONITSUKA_MARK = r"""
+      o---o
+     /     \
+    o---@---o
+     \     /
+      o---o
 """.strip("\n")
 
-# Color salmón aproximado de la mascota.
-ELISA_COLOR = "#d9766a"
+BRAND_COLOR = "#236b45"
+ACCENT_COLOR = "#c16a12"
 
 
 def logo_markup() -> str:
     """Logo como markup de Rich/Textual, coloreado."""
-    cuerpo = f"[{ELISA_COLOR}]{ELISA_ASCII}[/]"
-    titulo = "[b #d9766a]A N C H O R   P O R T[/]"
+    lineas = ONITSUKA_MARK.splitlines()
+    cuerpo = "\n".join(
+        f"[{BRAND_COLOR}]{linea}[/]" if index != 2 else
+        f"[{BRAND_COLOR}]    o---[/][b {ACCENT_COLOR}]@[/][{BRAND_COLOR}]---o[/]"
+        for index, linea in enumerate(lineas)
+    )
+    titulo = f"[b {BRAND_COLOR}]O N I T S U K A[/]"
     return f"{cuerpo}\n\n{titulo}"

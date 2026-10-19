@@ -1,8 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""Receta de empaquetado de AnchorPort en un ejecutable único.
+"""Receta de empaquetado de Onitsuka en un ejecutable único.
 
 Construir con:   pyinstaller AnchorPort.spec
-Resultado:       dist/AnchorPort.exe  (Windows)  /  dist/AnchorPort (Linux)
+Resultado:       dist/Onitsuka.exe  (Windows)  /  dist/Onitsuka (Linux)
 
 Nota: Npcap (Windows) o permisos root (Linux) y, para el escaneo detallado,
 el binario `nmap`, NO se empaquetan: son dependencias externas del sistema.
@@ -42,7 +42,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name="AnchorPort",
+    name="Onitsuka",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -54,5 +54,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon="assets/elisa.ico",   # carita de la mascota Elisa
+    icon="assets/onitsuka.ico",
 )

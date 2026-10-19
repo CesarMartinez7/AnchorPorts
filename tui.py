@@ -39,25 +39,23 @@ from registry import Registry
 SPINNER = "|/-\\"  # ASCII: se ve en cualquier terminal (cmd, powershell, bash)
 
 LEYENDA = (
-    "[b]Teclas[/]\n"
-    "  j / k   mover\n"
-    "  espacio bloquear\n"
-    "  t       por tiempo\n"
-    "  u       desbloquear\n"
-    "  e       expulsar (aislar)\n"
-    "  l       limitar MB\n"
-    "  d       detalle DNS\n"
-    "  n       renombrar\n"
-    "  Supr    olvidar\n"
-    "  r       re-escanear\n"
-    "  q       salir\n\n"
-    "[b]Estados[/]\n"
-    "  [green][+] permitido[/]\n"
-    "  [red][x] bloqueado[/]\n"
-    "  [red][X] expulsado[/]\n"
-    "  [magenta][%] limitado[/]\n"
-    "  [yellow][~] temporizado[/]\n"
-    "  [cyan][o] monitoreando[/]"
+    "[b #72dda0]ACCIONES[/]\n"
+    "  flechas  elegir dispositivo\n"
+    "  espacio  bloquear o permitir\n"
+    "  t / u    bloqueo temporal / liberar\n"
+    "  e / l    aislar / limitar datos\n"
+    "  d        actividad DNS y detalles\n"
+    "  n        asignar un nombre\n"
+    "  Supr     quitar del historial\n"
+    "  r        actualizar ahora\n"
+    "  q        salir y restaurar\n\n"
+    "[b #72dda0]ESTADO[/]\n"
+    "  [bold #72dda0][+] Permitido[/]\n"
+    "  [bold #ff7770][x] Bloqueado[/]\n"
+    "  [bold #ff7770][X] Aislado[/]\n"
+    "  [bold #c6a0ff][%] Límite de datos[/]\n"
+    "  [bold #f4c66a][~] Temporal[/]\n"
+    "  [bold #72c9e8][o] Monitor DNS[/]"
 )
 
 
@@ -179,8 +177,20 @@ class DnsDetailScreen(Screen):
     BINDINGS = [("escape,q,d", "cerrar", "Volver")]
 
     CSS = """
-    #detalle-info { height: auto; padding: 1 1; border: round $accent; }
-    DataTable { height: 1fr; }
+    #detalle-info {
+        height: auto; padding: 1 2;
+        border: round #3e5b4a; background: #18252e; color: #e6eee9;
+    }
+    DataTable {
+        height: 1fr; border: round #3e5b4a; padding: 0 1;
+        border-title-color: #72dda0; background: #18252e; color: #e6eee9;
+    }
+    DataTable > .datatable--header {
+        background: #72dda0; color: #101820; text-style: bold;
+    }
+    DataTable > .datatable--cursor {
+        background: #294238; color: #e6eee9; text-style: bold;
+    }
     """
 
     def __init__(self, dev, ip: str, manager):
@@ -205,15 +215,15 @@ class DnsDetailScreen(Screen):
         vendor = (d.vendor if d and d.vendor else "—")
         host = self.hostname or "—"
         if self._monitoring:
-            modo = "[green][o] monitoreando (tráfico redirigido, sin cortar)[/]"
+            modo = "[bold #72dda0][o] monitoreando (tráfico redirigido, sin cortar)[/]"
         else:
-            modo = ("[yellow]modo pasivo — IP forwarding no confirmado, no se "
+            modo = ("[bold #a85c00]modo pasivo — IP forwarding no confirmado, no se "
                     "redirige para no cortar la red (DNS de otros equipos solo "
                     "con Linux/root)[/]")
         cap = (f"[dim]DNS capturado: {self.sniffer.total} total · "
                f"{len(self.sniffer.log.get(self.ip, {}))} de este equipo[/]")
         return (
-            f"[b cyan]{host}[/]  ·  [b]{self.ip}[/]    {modo}\n"
+            f"[b #72dda0]{host}[/]  ·  [b]{self.ip}[/]    {modo}\n"
             f"MAC: {mac}   Fabricante: {vendor}    {cap}\n"
             f"Puertos/SO: {self._ports_info}\n"
             "[dim]Dominios que consulta este dispositivo (DNS en vivo). "
@@ -299,42 +309,45 @@ class DnsDetailScreen(Screen):
 
 
 class AnchorTUI(App):
-    TITLE = "AnchorPort"
+    TITLE = "Onitsuka"
     SUB_TITLE = "control de red · teclado"
 
     CSS = """
-    Screen { background: $surface; }
+    Screen { background: #101820; color: #e6eee9; }
+    Header { background: #18252e; color: #72dda0; }
+    Footer { background: #18252e; color: #e6eee9; }
 
     #status {
-        height: 1; padding: 0 2;
-        background: #d9766a; color: $text; text-style: bold;
+        height: 3; padding: 0 2;
+        background: #18252e; color: #e6eee9;
+        border-bottom: solid #72dda0;
     }
 
     #cuerpo { height: 1fr; padding: 1 1 0 1; }
 
     #main-table {
         width: 1fr; height: 1fr;
-        border: round #d9766a; padding: 0 1;
-        border-title-color: #d9766a; border-title-align: center;
-        border-subtitle-color: $text-muted; border-subtitle-align: right;
+        border: round #3e5b4a; background: #18252e; color: #e6eee9; padding: 0 1;
+        border-title-color: #72dda0; border-title-align: left;
+        border-subtitle-color: #a4b5aa; border-subtitle-align: right;
     }
     #main-table > .datatable--header {
-        background: #d9766a; color: $text; text-style: bold;
+        background: #72dda0; color: #101820; text-style: bold;
     }
-    #main-table > .datatable--cursor { background: #d9766a 45%; text-style: bold; }
-    #main-table > .datatable--hover { background: #d9766a 20%; }
+    #main-table > .datatable--cursor { background: #294238; color: #e6eee9; text-style: bold; }
+    #main-table > .datatable--hover { background: #202f37; }
 
     #sidebar {
-        width: 36; height: 1fr; margin-left: 1;
-        border: round #d9766a; padding: 1 1;
-        border-title-color: #d9766a; border-title-align: center;
+        width: 32; height: 1fr; margin-left: 1;
+        border: round #3e5b4a; background: #18252e; padding: 1 1;
+        border-title-color: #72dda0; border-title-align: left;
     }
-    #logo { color: #d9766a; height: auto; content-align: center top; }
-    #legend { height: auto; margin-top: 1; color: $text-muted; }
+    #logo { color: #72dda0; height: auto; content-align: center top; }
+    #legend { height: auto; margin-top: 1; color: #c1cdc5; }
 
     #modal {
         width: 50; height: auto; padding: 1 2;
-        border: round #d9766a; background: $panel;
+        border: round #72dda0; background: #18252e; color: #e6eee9;
     }
     #modal Label { margin-bottom: 1; }
     """
@@ -381,7 +394,7 @@ class AnchorTUI(App):
 
     def on_mount(self) -> None:
         table = self.query_one("#main-table", DataTable)
-        table.border_title = "Dispositivos en la red"
+        table.border_title = "DISPOSITIVOS EN LA RED"
         table.border_subtitle = ("j/k mover · espacio bloquear · e expulsar · "
                                   "l limitar MB · d detalle · n renombrar")
         table.add_column("IP", key="ip", width=16)
@@ -391,7 +404,7 @@ class AnchorTUI(App):
         table.add_column("Estado", key="estado", width=22)
         table.add_column("Visto", key="visto", width=7)
         table.focus()
-        self.query_one("#sidebar", Vertical).border_title = "AnchorPort"
+        self.query_one("#sidebar", Vertical).border_title = "GUÍA RÁPIDA"
 
         # BlockManager puede fallar sin Npcap/root: no reventar.
         try:
@@ -432,9 +445,9 @@ class AnchorTUI(App):
     def _estado(self, ip: str) -> Text:
         # Estado transitorio (cargando) tiene prioridad visual.
         if ip in self._pending:
-            return Text(f"{self._spinner()} {self._pending[ip]}...", style="bold yellow")
+            return Text(f"{self._spinner()} {self._pending[ip]}...", style="bold #f4c66a")
         if self.manager and self.manager.is_monitoring(ip):
-            return Text("[o] monitoreando", style="bold cyan")
+            return Text("[o] monitoreando", style="bold #72c9e8")
         if self.manager and self.manager.is_expelling(ip):
             return Text("[X] expulsado", style="bold red")
         if self.manager and self.manager.is_limiting(ip):
@@ -443,15 +456,15 @@ class AnchorTUI(App):
                 usado, tope, over = info
                 if over:
                     return Text(f"[x] cortado ({tope:.0f}MB)", style="bold red")
-                return Text(f"[%] {usado:.1f}/{tope:.0f}MB", style="magenta")
+                return Text(f"[%] {usado:.1f}/{tope:.0f}MB", style="bold #c6a0ff")
         if self.manager and self.manager.is_blocked(ip):
             rem = self.manager.remaining(ip)
             if rem is not None:
-                return Text(f"[~] bloqueado {_dur(rem)}", style="yellow")
+                return Text(f"[~] bloqueado {_dur(rem)}", style="bold #f4c66a")
             return Text("[x] bloqueado", style="bold red")
         if ip in (self.gateway_ip, self.local_ip):
             return Text("- tu / router", style="dim")
-        return Text("[+] permitido", style="green")
+        return Text("[+] permitido", style="bold #72dda0")
 
     def _refresh_table(self) -> None:
         table = self.query_one("#main-table", DataTable)
@@ -496,11 +509,18 @@ class AnchorTUI(App):
         if total == 0:
             resumen = f"{self._spinner()} buscando dispositivos..."
         else:
-            resumen = f"{total} dispositivos · {bloqueados} bloqueados"
-        base = f"gw {self.gateway_ip}    local {self.local_ip}    {resumen}"
+            resumen = f"{total} dispositivos detectados    ·    {bloqueados} bloqueados"
+        status = Text.assemble(
+            (">  ONITSUKA", "bold #72dda0"),
+            ("   CONTROL DE RED LOCAL", "dim"),
+            ("\n  ROUTER  ", "bold #72dda0"), (self.gateway_ip, "bold"),
+            ("     EQUIPO  ", "bold #72dda0"), (self.local_ip, "bold"),
+            ("     ", ""), (resumen, "bold"),
+        )
         if self.arp_error:
-            base = f"! ARP no disponible (Npcap/admin) - solo lectura    {base}"
-        self.query_one("#status", Static).update(base)
+            status.append("\n  ! ARP no disponible (Npcap/admin) — modo de solo lectura",
+                          style="bold #f4c66a")
+        self.query_one("#status", Static).update(status)
 
     # ---- Acciones de teclado ----------------------------------------
     def _selected_ip(self) -> str | None:
