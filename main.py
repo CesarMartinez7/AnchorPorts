@@ -10,7 +10,7 @@ from textual.widgets.option_list import Option
 
 from fonts import f
 from get_host import _ip_default
-from logo import ACCENT_COLOR, BRAND_COLOR, logo_markup
+from logo import ACCENT_COLOR, BRAND_COLOR, logo_text
 from net import get_gateway_ip
 
 machine: str = sys.platform.title()
@@ -71,7 +71,7 @@ class MenuApp(App):
         yield Static(Text(f.renderText("ONITSUKA"), style=f"bold {BRAND_COLOR}"),
                      id="banner")
         with Horizontal(id="fila"):
-            yield Static(logo_markup(), id="logo")
+            yield Static(logo_text(), id="logo")
             menu = OptionList(id="menu")
             for key, nombre, desc in OPCIONES:
                 etiqueta = Text.assemble(

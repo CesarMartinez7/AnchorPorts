@@ -24,7 +24,7 @@ from textual.widgets import DataTable, Footer, Header, Input, Label, Static
 
 from arp_manager import BLACKHOLE_MAC
 from dns_monitor import DnsSniffer
-from logo import logo_markup
+from logo import logo_text
 from net import (
     get_gateway_ip,
     get_local_ip,
@@ -388,7 +388,7 @@ class AnchorTUI(App):
         with Horizontal(id="cuerpo"):
             yield DataTable(id="main-table", cursor_type="row", zebra_stripes=True)
             with Vertical(id="sidebar"):
-                yield Static(logo_markup(), id="logo")
+                yield Static(logo_text(), id="logo")
                 yield Static(LEYENDA, id="legend")
         yield Footer()
 

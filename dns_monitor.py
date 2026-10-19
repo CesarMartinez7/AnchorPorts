@@ -22,7 +22,7 @@ from textual.containers import Horizontal, Vertical
 from textual.widgets import DataTable, Footer, Header, Static
 
 from arp_manager import BLACKHOLE_MAC
-from logo import logo_markup
+from logo import logo_text
 from net import (
     get_gateway_ip,
     get_local_ip,
@@ -167,7 +167,7 @@ class DNSMonitor(App):
         with Horizontal(id="cuerpo"):
             yield DataTable(id="dns-table", cursor_type="row", zebra_stripes=True)
             with Vertical(id="sidebar"):
-                yield Static(logo_markup(), id="logo")
+                yield Static(logo_text(), id="logo")
                 yield Static(LEYENDA_DNS, id="legend")
         yield Footer()
 
